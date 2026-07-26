@@ -2,7 +2,7 @@
 # Uses serial_transport instead of WiFi/MQTT for upstream communication.
 #
 # Usage:
-# 1. Copy demos/secrets.example.yml to demos/secrets.yaml (must be .yaml, not .yml)
+# 1. Copy demos/secrets.example.yaml to demos/secrets.yaml
 # 2. Edit demos/secrets.yaml with your actual credentials
 # 3. Compile: esphome compile demos/espnow-bridge-c5-serial.yml
 # 4. Flash: esphome upload demos/espnow-bridge-c5-serial.yml

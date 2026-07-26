@@ -1,0 +1,18 @@
+idf_component_register(
+    SRCS
+        "standalone_remote.cpp"
+        "../remote_protocol.cpp"
+        "../remote_file_receiver.cpp"
+        "../../esp_tree_common/espnow_crypto.cpp"
+    INCLUDE_DIRS
+        "compat"
+        "."
+        ".."
+        "../.."
+        "../../esp_tree_common"
+    REQUIRES
+        esp_wifi
+        esp_now
+        esp_timer
+        mbedtls
+)
