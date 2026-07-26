@@ -20,6 +20,7 @@
       "missing_addon_config": "Missing add-on connection settings"
     },
     "abort": {
+      "already_configured": "This device is already configured",
       "missing_addon_config": "Missing add-on connection settings"
     }
   },

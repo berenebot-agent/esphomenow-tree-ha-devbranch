@@ -3,12 +3,12 @@
 # Connects to WiFi/MQTT and relays ESP-NOW LR packets from remotes
 #
 # Usage:
-# 1. Copy demos/secrets.example.yml to demos/secrets.yaml (must be .yaml, not .yml)
+# 1. Copy demos/secrets.example.yaml to demos/secrets.yaml
 # 2. Edit demos/secrets.yaml with your actual credentials
-# 3. Compile: esphome compile demos/espnow-bridge.yml
-# 4. Flash: esphome upload demos/espnow-bridge.yml
+# 3. Compile: esphome compile demos/espnow-bridge-c5.yml
+# 4. Flash: esphome upload demos/espnow-bridge-c5.yml
 #
-# Note: demos/secrets.yaml is gitignored for security (ESPHome requires .yaml extension)
+# Note: demos/secrets.yaml is gitignored for security
 
 esphome:
   name: espnow-bridge-c5
@@ -37,7 +37,7 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  use_address: 10.1.1.146
+  # use_address: 10.1.1.146  # uncomment and set your bridge IP if mDNS doesn't resolve
 
 # Import ESP-NOW LR bridge component from local development directory
 external_components:

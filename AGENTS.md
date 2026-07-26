@@ -105,7 +105,7 @@ The integration connects to the add-on (not directly to the bridge) via WebSocke
 ### HA Integration Entities
 
 The integration creates HA entities from bridge topology data. Supported platforms:
-`sensor`, `binary_sensor`, `button`, `switch`, `number`, `text`, `select`, `alarm_control_panel`, `cover`, `fan`, `light`, `lock`, `valve`, `event`, `diagnostics`
+`sensor`, `binary_sensor`, `button`, `switch`, `number`, `text`, `select`, `alarm_control_panel`, `cover`, `fan`, `light`, `lock`, `valve`, `event`
 
 Each entity subscribes to `EspTreeRuntime` state changes on `async_added_to_hass`. Entities expose remote-level metadata (RSSI, hops, session, schema_hash) as extra state attributes. Devices are parented to the bridge device in the HA device registry.
 

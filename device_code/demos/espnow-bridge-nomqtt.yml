@@ -28,7 +28,7 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  use_address: 10.1.1.145
+  # use_address: 10.1.1.145  # uncomment and set your bridge IP if mDNS doesn't resolve
 
 external_components:
   - source:

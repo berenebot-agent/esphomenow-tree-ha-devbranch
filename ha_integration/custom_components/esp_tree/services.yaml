@@ -22,3 +22,5 @@ forget_remote:
       required: true
       selector:
         text:
+cleanup:
+  fields: {}

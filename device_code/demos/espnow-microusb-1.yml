@@ -4,12 +4,12 @@
 # Based on ESP32-C3 DevKitM-1 board (adjust pins for your specific board)
 #
 # Usage:
-# 1. Copy demos/secrets.example.yml to demos/secrets.yaml (must be .yaml, not .yml)
+# 1. Copy demos/secrets.example.yaml to demos/secrets.yaml
 # 2. Edit demos/secrets.yaml with your actual credentials
-# 3. Compile: esphome compile demos/espnow_remote_prototype.yml
-# 4. Flash: esphome upload demos/espnow_remote_prototype.yml
+# 3. Compile: esphome compile demos/espnow-microusb-1.yml
+# 4. Flash: esphome upload demos/espnow-microusb-1.yml
 #
-# Note: demos/secrets.yaml is gitignored for security (ESPHome requires .yaml extension)
+# Note: demos/secrets.yaml is gitignored for security
 
 esphome:
   name: espnow-microusb-1
