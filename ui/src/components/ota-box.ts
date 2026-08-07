@@ -174,7 +174,7 @@ private async start(): Promise<void> {
                     <div class="idle-controls">
                       ${this.showEditYaml ? html`<button class="btn btn-edit-yaml" @click=${this.goToConfig}>Edit Firmware YAML</button>` : nothing}
                       <label class="upload ${this.busy ? 'busy' : ''}">
-                        <input type="file" accept=".bin,.ota.bin,application/octet-stream" ?disabled=${this.busy} @change=${this.upload} />
+                        <input type="file" accept=".ota.bin" ?disabled=${this.busy} @change=${this.upload} />
                         <strong>${this.busy ? 'Processing firmware...' : 'Upload .ota.bin firmware to flash'}</strong>
                       </label>
                     </div>

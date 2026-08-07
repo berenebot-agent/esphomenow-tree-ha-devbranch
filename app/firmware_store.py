@@ -44,6 +44,10 @@ class FirmwareStore:
             tmp_path.unlink(missing_ok=True)
             raise ValueError("firmware file is empty")
 
+        if not upload.filename or not upload.filename.endswith(".ota.bin"):
+            tmp_path.unlink(missing_ok=True)
+            raise ValueError("firmware file must be an OTA image (.ota.bin); a factory .bin would brick the device over ESP-NOW")
+
         info = parse_firmware(tmp_path)
         if not info.valid:
             tmp_path.unlink(missing_ok=True)
