@@ -10,7 +10,7 @@ PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEMOS_DIR="${PROJ_DIR}/demos"
 CACHE_DIR="${PROJ_DIR}/../cache/builds"
 DOCKER_CACHE_DIR="${PROJ_DIR}/../cache/docker_compiler"
-DOCKER_IMG="ghcr.io/esphome/esphome:latest"
+DOCKER_IMG="ghcr.io/esphome/esphome:2026.4.5"
 
 mkdir -p "${CACHE_DIR}"
 mkdir -p "${DOCKER_CACHE_DIR}"
