@@ -46,8 +46,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         seen.add(model.unique_id)
         async_add_entities([EspTreeSensor(model)])
 
+    def add_text_sensor(model: EntityModel) -> None:
+        if model.unique_id in seen:
+            return
+        seen.add(model.unique_id)
+        async_add_entities([EspTreeTextSensor(model)])
+
     get_runtime(hass).register_platform("sensor", add, entry.entry_id if entry.data.get("type") == "remote" else None)
-    get_runtime(hass).register_platform("text_sensor", add, entry.entry_id if entry.data.get("type") == "remote" else None)
+    get_runtime(hass).register_platform("text_sensor", add_text_sensor, entry.entry_id if entry.data.get("type") == "remote" else None)
 
 
 class EspTreeSensor(EspTreeEntity, SensorEntity):
@@ -66,3 +72,9 @@ class EspTreeSensor(EspTreeEntity, SensorEntity):
     @property
     def state_class(self):
         return self.model.state_class or None
+
+
+class EspTreeTextSensor(EspTreeEntity, SensorEntity):
+    @property
+    def native_value(self):
+        return self.model.value

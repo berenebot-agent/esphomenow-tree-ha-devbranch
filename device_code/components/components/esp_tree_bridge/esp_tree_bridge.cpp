@@ -229,7 +229,7 @@ static const char *component_for_type(espnow_field_type_t type) {
     case FIELD_TYPE_BUTTON: return "button";
     case FIELD_TYPE_NUMBER: return "number";
     case FIELD_TYPE_TEXT: return "text";
-    case FIELD_TYPE_TEXT_SENSOR: return "sensor";
+    case FIELD_TYPE_TEXT_SENSOR: return "text_sensor";
     case FIELD_TYPE_COVER: return "cover";
     case FIELD_TYPE_LIGHT: return "light";
     case FIELD_TYPE_FAN: return "fan";
