@@ -13,13 +13,11 @@ from homeassistant.helpers.device_registry import DeviceEntry
 
 from .activity_logger import ActivityLogger
 from .const import CONF_TYPE, DOMAIN, INTEGRATION_VERSION, PLATFORMS, SHARED_RUNTIME_PATH
-from .remote_logger_dev_only import get_remote_logger as _setup_remote_logger
 
 _LOGGER = logging.getLogger(__name__)
 _MODULE_IMPORTED_AT = int(time.time())
 
 ActivityLogger.get()
-_setup_remote_logger()
 
 
 async def _migrate_legacy_entries(hass: HomeAssistant) -> None:

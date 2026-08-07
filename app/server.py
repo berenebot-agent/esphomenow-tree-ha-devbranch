@@ -59,7 +59,6 @@ from .ota_worker import OTAWorker
 from .pairing_store import PendingImportStore
 from .preflight import preflight_comparison
 from .protobuf.generated import esp_tree_runtime_pb2 as pb
-from .remote_logger_dev_only import get_remote_logger
 from .restart_status import integration_restart_decision
 from .yaml_scaffold import generate_scaffold
 from .yaml_store import YAMLStore
@@ -1159,7 +1158,6 @@ def create_app() -> FastAPI:
             mirror_activity_log_to_addon_log(),
             name="esp-tree-activity-log-mirror",
         )
-        get_remote_logger()
         app.state.reconnect_ws_task = asyncio.create_task(
             _init_reconnect_ws(),
             name="esp-tree-reconnect-ws",
