@@ -23,4 +23,3 @@ forget_remote:
       selector:
         text:
 cleanup:
-  fields: {}
