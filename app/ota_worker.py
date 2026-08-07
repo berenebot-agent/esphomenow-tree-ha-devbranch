@@ -16,6 +16,7 @@ from .models import (
     SUCCESS,
     TRANSFERRING,
     VERIFYING,
+    VERSION_MISMATCH,
     WAITING_REJOIN,
     find_node_by_mac,
     is_terminal,
@@ -487,6 +488,25 @@ class OTAWorker:
 
                 if initial_uptime_s is None or current_uptime < initial_uptime_s:
                     self.db.append_job_event(job_id, "flash_rejoined")
+                    latest_job = self.db.get_job(job_id) or job
+                    expected_version = (latest_job.get("parsed_version") or "").strip()
+                    actual_version = (node.get("firmware_version") or "").strip()
+                    if expected_version and actual_version:
+                        if actual_version == expected_version:
+                            self._finish(job["id"], SUCCESS)
+                        else:
+                            self.db.append_job_event(
+                                job_id,
+                                "flash_version_mismatch",
+                                expected_version=expected_version,
+                                actual_version=actual_version,
+                            )
+                            self._finish(
+                                job["id"],
+                                VERSION_MISMATCH,
+                                "firmware version mismatch after rejoin — device may not have updated",
+                            )
+                        return
                     self._finish(job["id"], SUCCESS)
                     return
 
