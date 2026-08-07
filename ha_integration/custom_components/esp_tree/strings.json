@@ -20,20 +20,18 @@
       "missing_addon_config": "Missing add-on connection settings"
     },
     "abort": {
-      "already_configured": "This device is already configured",
-      "missing_addon_config": "Missing add-on connection settings"
+      "missing_addon_config": "Missing add-on connection settings",
+      "already_configured": "ESP Tree is already configured"
     }
   },
-  "repairs": {
-    "issue": {
-      "restart_required": {
-        "title": "ESP Tree restart required",
-        "description": "Restart of Home Assistant is required to finish configuration of ESP Tree.",
-        "confirm_restart": {
-          "title": "Restart Home Assistant",
-          "description": "Restart of Home Assistant is required to finish download/update of ESP Tree, click submit to restart now.",
-          "error": {
-            "restart_failed": "Failed to restart Home Assistant. Please try again or restart manually."
+  "issues": {
+    "restart_required": {
+      "title": "Restart required",
+      "fix_flow": {
+        "step": {
+          "confirm_restart": {
+            "title": "Restart required",
+            "description": "Restart of Home Assistant is required to finish download/update of {name}, click submit to restart now."
           }
         }
       }
