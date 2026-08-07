@@ -247,6 +247,7 @@ usb_flash_demo() {
     echo ""
 
     docker run --rm \
+        --device "${port_dev}" \
         -v "${DEMOS_DIR}:/config" \
         -v "${PROJ_DIR}:/external" \
         -v "${CACHE_DIR}:/external/cache/builds" \
