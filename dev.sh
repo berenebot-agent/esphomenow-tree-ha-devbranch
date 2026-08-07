@@ -64,14 +64,21 @@ do_build_cpp() {
     local build_dir="${test_dir}/build"
     mkdir -p "${build_dir}"
     cd "${build_dir}"
-    cmake .. && make
+    if ! cmake ..; then
+        echo "==> C++ build FAILED: CMake configuration/generation error."
+        return 1
+    fi
+    if ! make; then
+        echo "==> C++ build FAILED: compilation error."
+        return 1
+    fi
     echo "==> C++ build complete."
 }
 
 do_run_cpp() {
     echo "==> Running C++ tests..."
     local build_dir="${SCRIPT_DIR}/device_code/tests/build"
-    if [ ! -f "${build_dir}/CTest" ] && [ -d "${build_dir}" ]; then
+    if [ -f "${build_dir}/CTestTestfile.cmake" ]; then
         cd "${build_dir}" && ctest --output-on-failure
     else
         echo "No tests found. Run 'dev.sh build-cpp' first."

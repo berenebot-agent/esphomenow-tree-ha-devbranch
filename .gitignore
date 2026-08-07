@@ -14,3 +14,7 @@ build/
 cache/
 node_modules/
 ui/node_modules/
+.venv/
+.opencode/
+.agents/
+logs/
