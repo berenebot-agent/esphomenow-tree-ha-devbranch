@@ -14,7 +14,7 @@ Things that break real use, produce wrong behavior, or risk bricking devices.
 
 ### A1. `bridge_api_key` missing from `secrets.example.yaml` — blocks all bridge compiles
 
-**✅ FIXED — Added `bridge_api_key` key to `secrets.example.yaml`**
+**✅ FIXED — Restored `secrets.example.yaml` from HEAD (which already had `bridge_api_key`; the working tree had regressed). Also fixes D20 (vestigial keys, PSK placeholder).**
 
 Every bridge demo references `!secret bridge_api_key` for HMAC API auth, but
 the committed example secrets file does not define it. The maintainer's own
@@ -28,6 +28,8 @@ secrets-resolution failure on first bridge compile.
 `device_code/demos/espnow-bridge-c5-serial.yml:60`
 
 ### A2. `text_sensor` platform mapping is broken
+
+**✅ FIXED — Bridge now returns `"text_sensor"` for `FIELD_TYPE_TEXT_SENSOR` (both component copies). Integration's `text_sensor` callback now creates `EspTreeTextSensor` (SensorEntity without state_class/device_class/unit_of_measurement) so HA renders string values as plain states.**
 
 The bridge maps `FIELD_TYPE_TEXT_SENSOR` (0x14) to the platform string
 `"sensor"`, so text_sensor entities arrive at the HA integration as numeric
@@ -55,6 +57,8 @@ leaving stale cached code running.
 
 ### A4. USB flash via `ha_compile.sh` broken — Docker missing `--device` passthrough
 
+**✅ FIXED — Added `--device "${port_dev}"` as a docker run flag in `ha_compile.sh`.**
+
 The USB-flash function in `ha_compile.sh` runs `docker run` to invoke
 `esphome upload --device <port>` but does not pass `--device "${port_dev}"` to
 the container. The container cannot open the serial port. `dev.sh flash-usb`
@@ -65,7 +69,7 @@ routes through this broken path. Users must fall back to native
 
 ### A5. Compile status contradicts CHANGELOG — unclear if compile works
 
-**⏳ Still open**
+**✅ FIXED — Added `## Unreleased` corrective note to CHANGELOG.md: native compilation IS implemented (compiler.py bootstraps an ESPHome venv via requirements-compile.txt, server.py exposes POST /api/devices/{mac}/compile, UI renders compile states). No code change needed.**
 
 `CHANGELOG.md:5-8` states compilation is disabled: "The compile button will
 fail with 'Native compilation not yet implemented.'" But `app/compiler.py`
@@ -80,6 +84,8 @@ Either the CHANGELOG is wrong (compile works) or the code is half-removed.
 
 ### A6. `.bin` vs `.ota.bin` accepted silently at upload — bricking risk
 
+**✅ FIXED — `firmware_store.save_upload()` now rejects uploads whose filename doesn't end with `.ota.bin` (temp cleanup + ValueError surfaced as HTTP 400). UI file input `accept` restricted to `.ota.bin`. `bin_parser.py` left unchanged (content-based validation stays pure). Known limitation: a factory .bin renamed to .ota.bin bypasses the guard — factory/OTA images share the 0xE9 magic byte internally, so the filename suffix is the only reliable signal.**
+
 `bin_parser.py` validates only the ESP image magic byte (0xE9) and minimum
 length — it does not distinguish a factory `.bin` from an OTA `.ota.bin`.
 The UI file input `accept=".bin,.ota.bin"` actively permits the wrong format.
@@ -91,6 +97,10 @@ brick the device with a vague "bridge OTA failed" message.
 `device_code/components/components/esp_tree_remote/remote_file_receiver.h:66-105`
 
 ### A7. Rejoin verification uses uptime heuristic, not MD5/build-date
+
+**✅ FIXED — `_wait_for_rejoin` in `ota_worker.py` now compares the job's `parsed_version` against the rejoined node's `firmware_version` after the uptime gate passes. Sets `VERSION_MISMATCH` (already a known status in models/UI/DB) when they differ. Falls back to SUCCESS when version is unavailable on either side (legacy devices).**
+
+**Note:** An initial MD5 comparison was removed during review — the add-on hashes the uploaded .ota.bin file bytes while the remote hashes the full running partition (padded with 0xFF), so the hashes are computed over different byte ranges and would never match, causing false VERSION_MISMATCH on every successful flash. Version comparison is the reliable signal (both sides derive from the same ESPHome `project_version` define).
 
 AGENTS.md states the add-on "polls topology via BridgeV2Manager to verify
 device rejoined with new firmware MD5 and build date." The actual
@@ -106,7 +116,7 @@ the heuristic. A version mismatch is never produced as a job status.
 
 ### A8. `cleanup` service registered in code but missing from `services.yaml`
 
-**✅ FIXED — Added `cleanup` stanza to `services.yaml`**
+**✅ FIXED — Added `cleanup:` entry to `services.yaml` (no fields, matching the empty `vol.Schema({})` in services.py).**
 
 `services.py:63-73` registers `esp_tree.cleanup`, but `services.yaml` only
 documents `send_command` and `forget_remote`. The service appears undocumented
@@ -118,7 +128,7 @@ so this is a bug, not intentional omission.
 
 ### A9. `update_repair.py` logs normal control flow at ERROR level
 
-**✅ FIXED — Changed 7 `_LOGGER.error(...)` calls to `_LOGGER.debug(...)`**
+**✅ FIXED — All 6 `_LOGGER.error(...)` calls downgraded to `_LOGGER.info(...)`. The existing `_LOGGER.debug` for OSError cleanup is unchanged.**
 
 Six `_LOGGER.error(...)` calls fire for routine marker-file checks
 ("RESTART_ISSUE: marker NOT found", "marker EXISTS", "CREATING issue") on
@@ -130,7 +140,7 @@ alarming users and triggering log-error sensors, masking real errors.
 
 ### A10. `strings.json` missing `already_configured` abort translation
 
-**✅ FIXED — Added `already_configured` to both `strings.json` and `translations/en.json`**
+**✅ FIXED — Added `already_configured` to the `abort` section in both `strings.json` and `translations/en.json`. Renamed `strings.json` top-level key from `"repairs"` to `"issues"` and restructured the `issues` section to match `en.json`'s format (`fix_flow` → `step` → `confirm_restart`, removing the non-standard `issue` wrapper).**
 
 `config_flow.py:167` aborts with `reason="already_configured"` and `:180` uses
 `_abort_if_unique_id_configured()`, but `strings.json` / `translations/en.json`
@@ -144,6 +154,8 @@ the string-regen step isn't syncing.
 `ha_integration/custom_components/esp_tree/translations/en.json`
 
 ### A11. `ha_compile.sh` Docker image unpinned — breaks C5 builds reproducibly
+
+**✅ FIXED — Pinned `DOCKER_IMG` to `ghcr.io/esphome/esphome:2026.4.5` in `ha_compile.sh:13`, matching `requirements-compile.txt:1`.**
 
 `ha_compile.sh:13` uses `DOCKER_IMG="ghcr.io/esphome/esphome:latest"`. The
 ESP32-C5 board + `variant: esp32c5` + `esp-idf` framework needs a recent
@@ -244,8 +256,6 @@ blindly via the HA add-on store.
 
 ### B7. AGENTS.md platform count wrong (claims 15, actual 14)
 
-**✅ FIXED — Removed `diagnostics` from the AGENTS.md platform list**
-
 AGENTS.md lists 15 platforms including `diagnostics`. Actually 14 entity
 platforms exist in `const.PLATFORMS` (no `diagnostics`); diagnostic entities
 are injected into `sensor`/`binary_sensor`. The maintainer doc is misleading.
@@ -332,6 +342,8 @@ ship in the public repo.
 
 ### C1. `remote_logger_dev_only.py` phones home to maintainer's private IP in production
 
+**✅ FIXED — Deleted both copies and all 5 import/call sites; removed from AGENTS.md**
+
 **Most critical cleanup item.** Both copies hardcode
 `LOG_SERVER_URL = "http://10.1.1.23:9999"` and attach to the root logger:
 
@@ -390,8 +402,6 @@ shipped reference material, but don't break end-to-end use.
 
 #### D1. `device_code/components/` gitignored but force-tracked (51 files)
 
-**✅ FIXED — Removed `device_code/components/` from `.gitignore`**
-
 `.gitignore:17` lists `device_code/components/`, yet 51 files are tracked
 via `git add -f`. A fresh clone gets them today, but: `git clean -fdX`
 silently wipes the directory; new files added under that path are ignored
@@ -402,6 +412,8 @@ unless force-added; semantically it claims source files are artifacts.
 **Refs:** `.gitignore:17` (51 tracked files in `device_code/components/`)
 
 #### D2. `.gitignore` incomplete
+
+**✅ FIXED — Added `.venv/`, `.opencode/`, `.agents/`, `logs/` to `.gitignore`**
 
 Missing entries for `.venv/`, `.opencode/`, `.agents/`, `logs/`. These
 directories exist in the working tree and could leak into commits.
@@ -420,7 +432,7 @@ users. `docs/superpowers/` alone has 14 tracked files of agent workplans.
 
 #### D4. `docs/serial_bridge_manual_test_checklist.md` is internal QA
 
-**✅ FIXED — Moved to `docs/internal/serial_bridge_manual_test_checklist.md`**
+**✅ FIXED — Moved to `docs/internal/serial_bridge_manual_test_checklist.md` (the `internal/` directory serves as the prefix).**
 
 33-line regression-test checklist ("WiFi mode bridge still compiles," "YAML
 rejects both `wifi:` and `serial_transport:`"). Filed under `docs/` with no
@@ -429,6 +441,8 @@ rejects both `wifi:` and `serial_transport:`"). Filed under `docs/` with no
 **Refs:** `docs/serial_bridge_manual_test_checklist.md`
 
 #### D5. `docs/ESP_findings_restart.md` is an open investigation log
+
+**✅ FIXED — Moved to `docs/ESP_archive/ESP_findings_restart.md`**
 
 325-line scratchpad documenting a known-broken repair flow with "Status:
 Pending user test," "Open Questions," and 7 failed version attempts. Reads as
@@ -537,7 +551,7 @@ node that both consumes and forwards, vs. a pure leaf with
 
 #### D16. Demo YAML Usage comments reference wrong filenames and extensions
 
-**✅ FIXED — Corrected all stale filename/extension references**
+**✅ FIXED — Corrected all stale filename/extension references in demo YAMLs (espnow-bridge-c5.yml, espnow-remote-1.yml, espnow-microusb-1.yml, secrets.example.yaml).**
 
 - `espnow-bridge-c5.yml:8-9` says `esphome compile demos/espnow-bridge.yml`
   (file is `espnow-bridge-c5.yml`)
@@ -556,7 +570,7 @@ node that both consumes and forwards, vs. a pure leaf with
 
 #### D17. Hardcoded maintainer IPs in demo `use_address`
 
-**✅ FIXED — Commented out `use_address` in both bridge demos with placeholder note**
+**✅ FIXED — Commented out `use_address` in both bridge demos with placeholder note.**
 
 `espnow-bridge-c5.yml:40` — `use_address: 10.1.1.146`
 `espnow-bridge-nomqtt.yml:31` — `use_address: 10.1.1.145`
@@ -566,6 +580,8 @@ bridge IP. Should be removed (let mDNS resolve) or commented with a
 placeholder.
 
 #### D18. Hardcoded maintainer MACs in demo `preferred_parents`
+
+**✅ FIXED — Commented out with placeholder `AA:BB:CC:DD:EE:FF` in all 4 demos**
 
 `espnow-remote-aqua.yml:48` (`E8:3D:C1:9D:6C:90`),
 `espnow-remote-leaf.yml:47` (`AC:A7:04:BE:09:28`),
@@ -578,6 +594,8 @@ parents, causing confusing "no route" behavior. Should be commented out with
 
 #### D19. All 11 demo YAMLs ship `logger: level: DEBUG` or `VERBOSE`
 
+**⏳ Still open — deferred until ship-ready (levels intentionally kept at DEBUG/VERBOSE for dev)**
+
 Every demo sets verbose logging. Combined with C1 (remote logger phones home),
 this generates maximal log volume that gets POSTed off-box. Even without C1,
 `VERBOSE` is excessive for field use and increases flash/airtime. No doc tells
@@ -587,7 +605,7 @@ users to dial this down for production.
 
 #### D20. `secrets.example.yaml` has vestigial keys and a non-random-looking PSK
 
-**✅ FIXED — Removed `api_encryption_key`, `remote_node_label`; replaced PSK with placeholder; added `bridge_api_key`**
+**✅ FIXED — Restored from HEAD (see A1). The vestigial `api_encryption_key` and `remote_node_label` keys are gone, the PSK is now `REPLACE_WITH_YOUR_ESP_NOW_PSK`, and `bridge_api_key` is present.**
 
 - `api_encryption_key` (line 16) — no demo references it; vestigial
 - `remote_node_label` (line 24) — no demo references it; vestigial
