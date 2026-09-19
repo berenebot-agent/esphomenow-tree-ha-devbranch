@@ -237,7 +237,7 @@ bool parse_state_receipt(const uint8_t *data, size_t len, ParsedStateReceipt &ou
     else if (field == 4 && wire == 0) out.state_tx_counter = static_cast<uint32_t>(varint_value);
     else if (field == 5 && wire == 0) out.entity_index = static_cast<uint8_t>(varint_value);
   }
-  return !out.remote_mac.empty() && out.state_tx_counter != 0;
+  return !out.remote_mac.empty();
 }
 
 bool parse_ota_start_request(const uint8_t *data, size_t len, ParsedOtaStartRequest &out) {

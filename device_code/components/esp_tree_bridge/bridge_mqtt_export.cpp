@@ -483,19 +483,14 @@ void ESPTreeBridgeMQTT::publish_device_discovery_(const uint8_t *mac) {
   dev.discovery_published_ms = millis();
 }
 
-void ESPTreeBridgeMQTT::do_clear_device_discovery_(const uint8_t *mac) {
-  if (!is_connected()) return;
-  const std::string nk = node_key_(mac);
-  publish(mqtt_discovery_prefix_ + "/device/" + nk + "/config", "", 1, true);
-  mqtt_devices_.erase(nk);
+bool ESPTreeBridgeMQTT::do_clear_device_discovery_(const PendingDeviceClear &rec) {
+  if (!is_connected()) return false;
+  return publish(rec.discovery_topic, "", 1, true);
 }
 
-void ESPTreeBridgeMQTT::do_clear_entity_(const uint8_t *mac, const BridgeEntitySchema &entity) {
-  if (!is_connected()) return;
-  const std::string component = entity_component_(static_cast<espnow_field_type_t>(entity.entity_type));
-  const std::string discovery_topic =
-      mqtt_discovery_prefix_ + "/" + component + "/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/config";
-  publish(discovery_topic, "", 1, true);
+bool ESPTreeBridgeMQTT::do_clear_entity_(const PendingEntityClear &rec) {
+  if (!is_connected()) return false;
+  return publish(rec.discovery_topic, "", 1, true);
 }
 
 void ESPTreeBridgeMQTT::subscribe_command_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) {
@@ -508,6 +503,7 @@ void ESPTreeBridgeMQTT::subscribe_command_topic_(const uint8_t *mac, const Bridg
   }
   std::array<uint8_t, 6> leaf{};
   memcpy(leaf.data(), mac, 6);
+  remove_command_routes_for_entity_(mac, entity.entity_index);
   auto subscribe_route = [&](const std::string &topic, CommandRouteKind route_kind) {
     command_routes_[topic] = {leaf, entity.entity_index, route_kind};
     if (subscribed_topics_.insert(topic).second) {
@@ -525,6 +521,70 @@ void ESPTreeBridgeMQTT::subscribe_command_topic_(const uint8_t *mac, const Bridg
     subscribe_route(fan_oscillation_command_topic_(mac, entity), CommandRouteKind::FAN_OSCILLATION);
   if (option_is_true(options, "direction"))
     subscribe_route(fan_direction_command_topic_(mac, entity), CommandRouteKind::FAN_DIRECTION);
+}
+
+void ESPTreeBridgeMQTT::remove_command_routes_for_entity_(const uint8_t *mac, uint8_t entity_index) {
+  if (mac == nullptr) return;
+  for (auto it = command_routes_.begin(); it != command_routes_.end();) {
+    if (it->second.entity_index == entity_index && memcmp(it->second.leaf_mac.data(), mac, 6) == 0) {
+      it = command_routes_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+std::vector<std::string> ESPTreeBridgeMQTT::command_topics_for_object_id_(const uint8_t *mac,
+                                                                          const BridgeEntitySchema &entity,
+                                                                          const std::string &object_id) const {
+  std::vector<std::string> topics;
+  const auto type = static_cast<espnow_field_type_t>(entity.entity_type);
+  if (!(type == FIELD_TYPE_SWITCH || type == FIELD_TYPE_NUMBER || type == FIELD_TYPE_TEXT || type == FIELD_TYPE_COVER ||
+        type == FIELD_TYPE_VALVE || type == FIELD_TYPE_LOCK || type == FIELD_TYPE_SELECT || type == FIELD_TYPE_ALARM ||
+        type == FIELD_TYPE_FAN || type == FIELD_TYPE_LIGHT || type == FIELD_TYPE_BUTTON)) {
+    return topics;
+  }
+  topics.push_back(command_topic_(mac, object_id));
+  if (type != FIELD_TYPE_FAN) return topics;
+  const auto options = parse_options_map(entity.entity_options);
+  if (option_u32(options, "speed_count", 0) > 0) {
+    topics.push_back(fan_speed_command_topic_(mac, object_id));
+  }
+  if (option_is_true(options, "oscillation")) {
+    topics.push_back(fan_oscillation_command_topic_(mac, object_id));
+  }
+  if (option_is_true(options, "direction")) {
+    topics.push_back(fan_direction_command_topic_(mac, object_id));
+  }
+  return topics;
+}
+
+std::string ESPTreeBridgeMQTT::entity_object_id_from_schema_(const std::vector<espnow_entity_schema_t> &entities,
+                                                             const espnow_entity_schema_t &entity) const {
+  std::string base;
+  if (!entity.entity_id.empty()) {
+    base = slugify_name(entity.entity_id);
+  } else {
+    base = slugify_name(entity.entity_name);
+  }
+  if (base.empty()) base = "entity";
+  if (!entity.entity_id.empty()) return base;
+
+  unsigned duplicate_index = 0;
+  for (size_t i = 0; i < entities.size(); ++i) {
+    const auto &candidate = entities[i];
+    if (candidate.entity_type == 0) continue;
+    if (slugify_name(candidate.entity_name) == base) {
+      duplicate_index++;
+      if (candidate.entity_index == entity.entity_index) {
+        break;
+      }
+    }
+  }
+  if (duplicate_index > 1) {
+    base += "_" + std::to_string(duplicate_index);
+  }
+  return base;
 }
 
 void ESPTreeBridgeMQTT::handle_command_message_(const std::string &topic, const std::string &payload) {
@@ -993,23 +1053,30 @@ void ESPTreeBridgeMQTT::queue_availability(const uint8_t *mac, bool online, cons
 
 void ESPTreeBridgeMQTT::queue_clear_entities(const uint8_t *mac,
                                                const std::vector<BridgeEntitySchema> &old_entities) {
+  const std::string nk = node_key_(mac);
   for (const auto &entity : old_entities) {
+    const std::string object_id = entity_object_id_from_schema_(old_entities, entity);
     const std::string key = entity_record_key_(mac, entity.entity_index);
-    auto it = mqtt_entities_.find(key);
-    if (it != mqtt_entities_.end()) {
-      do_clear_entity_(mac, entity);
-      mqtt_entities_.erase(it);
-    }
+    const std::string component = entity_component_(static_cast<espnow_field_type_t>(entity.entity_type));
+    const std::string discovery_topic =
+        mqtt_discovery_prefix_ + "/" + component + "/" + nk + "/" + object_id + "/config";
+    PendingEntityClear pending{key, discovery_topic, command_topics_for_object_id_(mac, entity, object_id)};
+    pending_entity_clears_[key] = pending;
+    remove_command_routes_for_entity_(mac, entity.entity_index);
+    mqtt_entities_.erase(key);
   }
 
-  const std::string nk = node_key_(mac);
   auto dev_it = mqtt_devices_.find(nk);
   if (dev_it != mqtt_devices_.end()) {
     for (const auto &entity : old_entities) {
       dev_it->second.entities.erase(entity.entity_index);
     }
     if (dev_it->second.entities.empty()) {
-      do_clear_device_discovery_(mac);
+      pending_device_clears_[nk] = PendingDeviceClear{
+          nk,
+          mqtt_discovery_prefix_ + "/device/" + nk + "/config",
+      };
+      mqtt_devices_.erase(dev_it);
     } else {
       dev_it->second.discovery_dirty = true;
       dev_it->second.discovery_published = false;
@@ -1028,12 +1095,6 @@ void ESPTreeBridgeMQTT::on_schema_complete(const uint8_t *mac, uint8_t total_ent
   queue_remote_diag_refresh_(mac);
   delayed_diag_refresh_pending_[mac_hex(mac)] = millis() + DIAG_DELAYED_REFRESH_DELAY_MS;
   (void)total_entities;
-}
-
-void ESPTreeBridgeMQTT::on_discovery_confirmed(const uint8_t *mac, uint8_t entity_index, bool success) {
-  if (bridge_ != nullptr) {
-    bridge_->protocol_discovery_confirmed(mac, entity_index, success);
-  }
 }
 
 void ESPTreeBridgeMQTT::set_bridge_diag(uint32_t uptime_s, uint8_t remotes_online, int8_t rssi,
@@ -1098,6 +1159,29 @@ void ESPTreeBridgeMQTT::tick() {
     if (tick_budget_exceeded_()) return;
     publish_bridge_diag_discovery_();
     if (tick_budget_exceeded_()) return;
+  }
+
+  for (auto it = pending_entity_clears_.begin(); it != pending_entity_clears_.end();) {
+    if (tick_budget_exceeded_()) return;
+    if (!do_clear_entity_(it->second)) {
+      break;
+    }
+    for (const auto &topic : it->second.command_topics) {
+      command_routes_.erase(topic);
+    }
+    delay(YIELD_MS);
+    it = pending_entity_clears_.erase(it);
+    return;
+  }
+
+  for (auto it = pending_device_clears_.begin(); it != pending_device_clears_.end();) {
+    if (tick_budget_exceeded_()) return;
+    if (!do_clear_device_discovery_(it->second)) {
+      break;
+    }
+    delay(YIELD_MS);
+    it = pending_device_clears_.erase(it);
+    return;
   }
 
   if (!availability_queue_.empty()) {
@@ -1242,35 +1326,67 @@ std::string ESPTreeBridgeMQTT::availability_topic_(const uint8_t *mac) const {
 }
 
 std::string ESPTreeBridgeMQTT::state_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/state";
+  return state_topic_(mac, entity_object_id_(mac, entity));
 }
 
 std::string ESPTreeBridgeMQTT::command_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/set";
+  return command_topic_(mac, entity_object_id_(mac, entity));
+}
+
+std::string ESPTreeBridgeMQTT::state_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/state";
+}
+
+std::string ESPTreeBridgeMQTT::command_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/set";
 }
 
 std::string ESPTreeBridgeMQTT::fan_speed_state_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/percentage_state";
+  return fan_speed_state_topic_(mac, entity_object_id_(mac, entity));
 }
 
 std::string ESPTreeBridgeMQTT::fan_speed_command_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/percentage_set";
+  return fan_speed_command_topic_(mac, entity_object_id_(mac, entity));
 }
 
 std::string ESPTreeBridgeMQTT::fan_oscillation_state_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/oscillation_state";
+  return fan_oscillation_state_topic_(mac, entity_object_id_(mac, entity));
 }
 
 std::string ESPTreeBridgeMQTT::fan_oscillation_command_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/oscillation_set";
+  return fan_oscillation_command_topic_(mac, entity_object_id_(mac, entity));
 }
 
 std::string ESPTreeBridgeMQTT::fan_direction_state_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/direction_state";
+  return fan_direction_state_topic_(mac, entity_object_id_(mac, entity));
 }
 
 std::string ESPTreeBridgeMQTT::fan_direction_command_topic_(const uint8_t *mac, const BridgeEntitySchema &entity) const {
-  return "esp-tree/" + node_key_(mac) + "/" + entity_object_id_(mac, entity) + "/direction_set";
+  return fan_direction_command_topic_(mac, entity_object_id_(mac, entity));
+}
+
+std::string ESPTreeBridgeMQTT::fan_speed_state_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/percentage_state";
+}
+
+std::string ESPTreeBridgeMQTT::fan_speed_command_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/percentage_set";
+}
+
+std::string ESPTreeBridgeMQTT::fan_oscillation_state_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/oscillation_state";
+}
+
+std::string ESPTreeBridgeMQTT::fan_oscillation_command_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/oscillation_set";
+}
+
+std::string ESPTreeBridgeMQTT::fan_direction_state_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/direction_state";
+}
+
+std::string ESPTreeBridgeMQTT::fan_direction_command_topic_(const uint8_t *mac, const std::string &object_id) const {
+  return "esp-tree/" + node_key_(mac) + "/" + object_id + "/direction_set";
 }
 
 std::string ESPTreeBridgeMQTT::unique_id_(const uint8_t *mac, const BridgeEntitySchema &entity) const {

@@ -363,7 +363,6 @@ void BridgeProtocol::set_publish_bridge_diag_fn(publish_bridge_diag_fn_t fn) { p
 void BridgeProtocol::set_clear_entities_fn(clear_entities_fn_t fn) { clear_entities_fn_ = std::move(fn); }
 void BridgeProtocol::set_schema_complete_fn(schema_complete_fn_t fn) { schema_complete_fn_ = std::move(fn); }
 
-void BridgeProtocol::set_discovery_confirmed_fn(discovery_confirmed_fn_t fn) { discovery_confirmed_fn_ = std::move(fn); }
 void BridgeProtocol::set_file_ack_fn(file_ack_fn_t fn) { file_ack_fn_ = std::move(fn); }
 void BridgeProtocol::set_send_err_fn(send_err_fn_t fn) { send_err_fn_ = std::move(fn); }
 void BridgeProtocol::set_send_ota_frame_fn(send_ota_frame_fn_t fn) { send_ota_frame_fn_ = std::move(fn); }
@@ -813,7 +812,7 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
   if (joining_in_progress_ && memcmp(header.leaf_mac, joining_leaf_mac_.data(), 6) != 0) {
     ESP_LOGW(TAG, "JOIN from %s blocked — global join slot held by %s",
              mac_hex(header.leaf_mac).c_str(), mac_hex(joining_leaf_mac_.data()).c_str());
-    return send_join_ack_(sender_mac, session, 0, ESPNOW_JOIN_REASON_WAIT, 0, false);
+    return send_join_ack_(sender_mac, session, 0, ESPNOW_JOIN_REASON_WAIT, 0);
   }
   if (session.join_in_progress_) {
     const bool same_remote_nonce =
@@ -836,7 +835,7 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
 
       ESP_LOGI(TAG, "Join retry detected for %s, resending JOIN_ACK stage=%u",
                mac_hex(header.leaf_mac).c_str(), retry_stage);
-      return send_join_ack_(sender_mac, session, 1, 0, retry_stage, false);
+      return send_join_ack_(sender_mac, session, 1, 0, retry_stage);
     }
 
     ESP_LOGI(TAG, "Fresh JOIN detected for %s while prior join was still in progress, restarting join state",
@@ -882,12 +881,9 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
   const auto hash_it = schema_hash_cache_.find(cache_key);
   const bool cached_schema_hit = hash_it != schema_hash_cache_.end() && hash_it->second == session.schema_hash;
   const uint8_t action = cached_schema_hit ? ESPNOW_JOIN_STATUS_SEND_STATE : ESPNOW_JOIN_STATUS_SCHEMA_REFRESH;
-  ESP_LOGI(TAG, "[JOIN] %02X%02X%02X%02X%02X%02X flags=%u/%u mtu=%u hops=%u sender=%02X%02X%02X%02X%02X%02X recv_hash=%02X%02X%02X%02X%02X%02X%02X%02X... cached=%s action=%u",
+  ESP_LOGI(TAG, "[JOIN] %02X%02X%02X%02X%02X%02X recv_hash=%02X%02X%02X%02X%02X%02X%02X%02X... cached=%s action=%u",
            session.leaf_mac[0], session.leaf_mac[1], session.leaf_mac[2],
            session.leaf_mac[3], session.leaf_mac[4], session.leaf_mac[5],
-           join->session_flags, session.leaf_session_flags, session.session_max_payload,
-           ESPNOW_HOPS_COUNT(header.hop_count),
-           sender_mac[0], sender_mac[1], sender_mac[2], sender_mac[3], sender_mac[4], sender_mac[5],
            join->schema_hash[0], join->schema_hash[1], join->schema_hash[2], join->schema_hash[3],
            join->schema_hash[4], join->schema_hash[5], join->schema_hash[6], join->schema_hash[7],
            cached_schema_hit ? "valid" : "MISS", action);
@@ -932,7 +928,6 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
                      mac_hex(sender_mac).c_str(), join->dirty_count);
     const bool sent = send_join_ack_(sender_mac, session, 1, 0, ESPNOW_JOIN_STATUS_SEND_STATE);
     if (!sent) {
-      clear_joining_slot_();
       session.join_in_progress_ = false;
       session.online = false;
       session.remote_state = espnow_log_state_t::NONE;
@@ -941,7 +936,6 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
       session.session_key_valid = false;
       return false;
     }
-    clear_joining_slot_();
     return sent;
   }
 
@@ -951,7 +945,6 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
   session.pending_schema_index = 0;
   const bool join_ack_ok = send_join_ack_(sender_mac, session, 1, 0, ESPNOW_JOIN_STATUS_SCHEMA_REFRESH);
   if (!join_ack_ok) {
-    clear_joining_slot_();
     session.join_in_progress_ = false;
     session.online = false;
     session.remote_state = espnow_log_state_t::NONE;
@@ -959,7 +952,6 @@ bool BridgeProtocol::handle_join_(const uint8_t *sender_mac, const espnow_frame_
     session.session_key_valid = false;
     return false;
   }
-  clear_joining_slot_();
   queue_state_log_(espnow_log_state_t::JOINED, "State: JOINED remote=%s (Schema Refresh)", mac_hex(static_cast<const uint8_t*>(header.leaf_mac)).c_str());
   session.schema_request_retries = 0;
   ESP_LOGI(TAG, "  [TX SCHEMA_REQUEST] Identity desc=0 to %s", mac_hex(sender_mac).c_str());
@@ -1481,7 +1473,7 @@ bool BridgeProtocol::send_discover_announce_(const uint8_t *sender_mac, const ui
 }
 
 bool BridgeProtocol::send_join_ack_(const uint8_t *sender_mac, BridgeSession &session, uint8_t accepted, uint8_t reason,
-                                    uint8_t schema_status, bool claim_global_slot) {
+                                    uint8_t schema_status) {
   espnow_join_ack_t ack{};
   ack.accepted = accepted;
   ack.reason = reason;
@@ -1490,7 +1482,7 @@ bool BridgeProtocol::send_join_ack_(const uint8_t *sender_mac, BridgeSession &se
   ack.session_flags = bridge_session_flags_;
   if (accepted) {
     session.join_in_progress_ = true;
-    if (claim_global_slot && !joining_in_progress_) {
+    if (!joining_in_progress_) {
       joining_in_progress_ = true;
       memcpy(joining_leaf_mac_.data(), session.leaf_mac.data(), 6);
       join_started_ms_ = millis();
@@ -1500,17 +1492,13 @@ bool BridgeProtocol::send_join_ack_(const uint8_t *sender_mac, BridgeSession &se
                          session.tx_counter++, reinterpret_cast<const uint8_t *>(&ack), sizeof(ack));
 }
 
-void BridgeProtocol::clear_joining_slot_() {
-  joining_in_progress_ = false;
-  memset(joining_leaf_mac_.data(), 0, 6);
-  join_started_ms_ = 0;
-}
-
 bool BridgeProtocol::send_join_complete_(const uint8_t *sender_mac, BridgeSession &session, bool reset_retry_state) {
   const bool sent = send_join_ack_(sender_mac, session, 1, 0, ESPNOW_JOIN_STATUS_COMPLETE);
   session.join_complete_pending = true;
   session.join_in_progress_ = false;
-  clear_joining_slot_();
+  joining_in_progress_ = false;
+  memset(joining_leaf_mac_.data(), 0, 6);
+  join_started_ms_ = 0;
   session.last_join_complete_ms = millis();
   if (reset_retry_state) {
     session.join_complete_retry_count = 0;

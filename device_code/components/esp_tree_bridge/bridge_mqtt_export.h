@@ -52,6 +52,17 @@ struct MqttDeviceRecord {
   uint32_t discovery_published_ms{0};
 };
 
+struct PendingEntityClear {
+  std::string entity_key;
+  std::string discovery_topic;
+  std::vector<std::string> command_topics;
+};
+
+struct PendingDeviceClear {
+  std::string node_key;
+  std::string discovery_topic;
+};
+
 class ESPTreeBridgeMQTT : public mqtt::CustomMQTTDevice {
  public:
   ESPTreeBridgeMQTT();
@@ -72,7 +83,6 @@ class ESPTreeBridgeMQTT : public mqtt::CustomMQTTDevice {
   void queue_availability(const uint8_t *mac, bool online, const char *reason);
   void queue_clear_entities(const uint8_t *mac, const std::vector<espnow_entity_schema_t> &old_entities);
   void on_schema_complete(const uint8_t *mac, uint8_t total_entities);
-  void on_discovery_confirmed(const uint8_t *mac, uint8_t entity_index, bool success);
   void queue_remote_diag_refresh(const uint8_t *mac);
 
  private:
@@ -85,10 +95,15 @@ class ESPTreeBridgeMQTT : public mqtt::CustomMQTTDevice {
   void do_publish_discovery_(MqttEntityRecord &rec);
   void publish_device_discovery_(const uint8_t *mac);
   void build_entity_component_(JsonObject cmp, const uint8_t *mac, const espnow_entity_schema_t &entity);
-  void do_clear_device_discovery_(const uint8_t *mac);
+  bool do_clear_device_discovery_(const PendingDeviceClear &rec);
   bool do_publish_state_(MqttEntityRecord &rec);
-  void do_clear_entity_(const uint8_t *mac, const espnow_entity_schema_t &entity);
+  bool do_clear_entity_(const PendingEntityClear &rec);
   void subscribe_command_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity);
+  void remove_command_routes_for_entity_(const uint8_t *mac, uint8_t entity_index);
+  std::vector<std::string> command_topics_for_object_id_(const uint8_t *mac, const espnow_entity_schema_t &entity,
+                                                         const std::string &object_id) const;
+  std::string entity_object_id_from_schema_(const std::vector<espnow_entity_schema_t> &entities,
+                                            const espnow_entity_schema_t &entity) const;
   void handle_command_message_(const std::string &topic, const std::string &payload);
   void handle_force_rejoin_command_(const std::string &topic, const std::string &payload);
   void publish_bridge_diag_discovery_();
@@ -107,12 +122,20 @@ class ESPTreeBridgeMQTT : public mqtt::CustomMQTTDevice {
   std::string availability_topic_(const uint8_t *mac) const;
   std::string state_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string command_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
+  std::string state_topic_(const uint8_t *mac, const std::string &object_id) const;
+  std::string command_topic_(const uint8_t *mac, const std::string &object_id) const;
   std::string fan_speed_state_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string fan_speed_command_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string fan_oscillation_state_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string fan_oscillation_command_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string fan_direction_state_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string fan_direction_command_topic_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
+  std::string fan_speed_state_topic_(const uint8_t *mac, const std::string &object_id) const;
+  std::string fan_speed_command_topic_(const uint8_t *mac, const std::string &object_id) const;
+  std::string fan_oscillation_state_topic_(const uint8_t *mac, const std::string &object_id) const;
+  std::string fan_oscillation_command_topic_(const uint8_t *mac, const std::string &object_id) const;
+  std::string fan_direction_state_topic_(const uint8_t *mac, const std::string &object_id) const;
+  std::string fan_direction_command_topic_(const uint8_t *mac, const std::string &object_id) const;
   std::string unique_id_(const uint8_t *mac, const espnow_entity_schema_t &entity) const;
   std::string bridge_state_topic_(const char *suffix) const;
   std::string remote_diag_state_topic_(const uint8_t *mac, const char *suffix) const;
@@ -125,6 +148,8 @@ class ESPTreeBridgeMQTT : public mqtt::CustomMQTTDevice {
 
   std::map<std::string, MqttEntityRecord> mqtt_entities_;
   std::map<std::string, MqttDeviceRecord> mqtt_devices_;
+  std::map<std::string, PendingEntityClear> pending_entity_clears_;
+  std::map<std::string, PendingDeviceClear> pending_device_clears_;
   struct AvailabilityEntry { std::array<uint8_t, 6> mac{}; bool online{false}; std::string reason; };
   std::deque<AvailabilityEntry> availability_queue_;
   std::set<std::string> subscribed_topics_;
