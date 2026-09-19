@@ -1086,7 +1086,6 @@ bool RemoteProtocol::handle_join_ack_(const uint8_t *, const espnow_frame_header
   }
   memcpy(bridge_nonce_.data(), ack->bridge_nonce, bridge_nonce_.size());
   bridge_session_flags_ = ack->session_flags;
-  local_session_flags_ = ack->session_flags;
   if ((local_session_flags_ & ESPNOW_SESSION_FLAG_V2_MTU) &&
       (bridge_session_flags_ & ESPNOW_SESSION_FLAG_V2_MTU)) {
     session_max_payload_ = ESPNOW_V2_MAX_PAYLOAD;

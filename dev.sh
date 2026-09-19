@@ -10,7 +10,6 @@ if [[ "${1:-}" == "quick" ]]; then
 fi
 
 COMPILE_SCRIPT="${SCRIPT_DIR}/device_code/scripts/ha_compile.sh"
-LOG_LISTENER="${SCRIPT_DIR}/log_listener.py"
 
 show_menu() {
     echo ""
@@ -85,6 +84,68 @@ do_run_cpp() {
     fi
 }
 
+do_smoke_compile() {
+    echo "==> Smoke-compiling representative ESPHome firmware..."
+    local secrets="${SCRIPT_DIR}/device_code/demos/secrets.yaml"
+    local backup=""
+
+    if [ -f "$secrets" ]; then
+        backup="$(mktemp)"
+        cp "$secrets" "$backup"
+    fi
+
+    restore_secrets() {
+        if [ -n "$backup" ] && [ -f "$backup" ]; then
+            cp "$backup" "$secrets"
+            rm -f "$backup"
+        else
+            rm -f "$secrets"
+        fi
+    }
+    trap restore_secrets RETURN
+
+    cat > "$secrets" <<'EOF_SECRETS'
+wifi_ssid: "ESP_TREE_TEST"
+wifi_password: "esp-tree-test-password"
+mqtt_broker: "127.0.0.1"
+mqtt_username: "test"
+mqtt_password: "test"
+ota_password: "esp-tree-test-ota"
+espnow_network_id: "esp-tree-test"
+espnow_psk: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+bridge_api_key: "esp-tree-test-api-key"
+EOF_SECRETS
+
+    bash "${COMPILE_SCRIPT}" espnow-bridge-c5 b
+    bash "${COMPILE_SCRIPT}" espnow-remote-us1 b
+}
+
+do_verify() {
+    local scope="${1:-global}"
+    case "$scope" in
+        global|device|addon) ;;
+        *)
+            echo "ERROR: verify scope must be global, device, or addon." >&2
+            return 2
+            ;;
+    esac
+
+    echo ""
+    echo "==> Deployment verification (scope: $scope)..."
+
+    if [[ "$scope" == "global" || "$scope" == "addon" ]]; then
+        "${SCRIPT_DIR}/test/run-unit-tests.sh"
+    fi
+
+    if [[ "$scope" == "global" || "$scope" == "device" ]]; then
+        do_build_cpp
+        do_run_cpp
+        do_smoke_compile
+    fi
+
+    echo "==> Deployment verification passed."
+}
+
 select_commit_scope() {
     echo ""
     echo "  Commit Scope"
@@ -117,13 +178,8 @@ do_qc() {
     echo "==> Starting QC pipeline (scope: $tmp_scope)..."
     echo ""
 
-    LOG_SESSION="esp_tree_log"
-    if ! screen -ls 2>/dev/null | grep -q "$LOG_SESSION"; then
-        echo "Starting log listener in screen session '$LOG_SESSION'..."
-        screen -dmS "$LOG_SESSION" python3 "$LOG_LISTENER"
-    else
-        echo "Log listener already running in screen session '$LOG_SESSION'."
-    fi
+    # Gate release/versioning on tests and representative firmware builds.
+    do_verify "$tmp_scope"
 
     if [[ "$tmp_scope" == "global" || "$tmp_scope" == "addon" ]]; then
         echo ""
@@ -397,6 +453,10 @@ case "$1" in
     run-cpp)
         do_run_cpp
         ;;
+    verify|test)
+        shift
+        do_verify "${1:-global}"
+        ;;
     qc)
         shift
         if [[ "${1:-}" == "quick" ]]; then
@@ -417,8 +477,9 @@ case "$1" in
         do_clean
         ;;
     *)
-        echo "Usage: dev.sh [compile|build-cpp|run-cpp|qc|flash-usb|esplog|clean] [args...]"
-        echo "       dev.sh qc [quick] [global|device|addon]  # scope defaults to global"
+        echo "Usage: dev.sh [compile|build-cpp|run-cpp|verify|qc|flash-usb|esplog|clean] [args...]"
+        echo "       dev.sh verify [global|device|addon]      # run deployment gate only"
+        echo "       dev.sh qc [quick] [global|device|addon]  # verify, then version/commit/push"
         exit 1
         ;;
 esac
