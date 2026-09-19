@@ -722,7 +722,7 @@ export class EspSetupWizard extends LitElement {
       }
 
       const port = await serial.requestPort();
-      const moduleUrl = 'https://unpkg.com/esptool-js@0.6.1/lib/index.js';
+      const moduleUrl = 'https://unpkg.com/esptool-js@0.6.1/bundle.js';
       const esptool = await import(/* @vite-ignore */ moduleUrl);
       transport = new esptool.Transport(port, true);
       const loader = new esptool.ESPLoader({
