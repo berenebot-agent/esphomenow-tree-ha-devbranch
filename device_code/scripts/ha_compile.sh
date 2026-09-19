@@ -10,7 +10,12 @@ PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEMOS_DIR="${PROJ_DIR}/demos"
 CACHE_DIR="${PROJ_DIR}/../cache/builds"
 DOCKER_CACHE_DIR="${PROJ_DIR}/../cache/docker_compiler"
-DOCKER_IMG="ghcr.io/esphome/esphome:2026.4.5"
+ESPHOME_VERSION="$(awk -F'==' '/^[[:space:]]*esphome==/ { print $2; exit }' "${PROJ_DIR}/../requirements-compile.txt")"
+if [ -z "${ESPHOME_VERSION}" ]; then
+    echo "ERROR: Could not determine ESPHome version from requirements-compile.txt" >&2
+    exit 1
+fi
+DOCKER_IMG="ghcr.io/esphome/esphome:${ESPHOME_VERSION}"
 
 mkdir -p "${CACHE_DIR}"
 mkdir -p "${DOCKER_CACHE_DIR}"
