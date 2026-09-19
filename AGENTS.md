@@ -175,7 +175,7 @@ ESP firmware for bridge and remote nodes. ESPHome external components + demo YAM
 
 ### Protocol Source of Truth
 
-`device_code/components/components/esp_tree_common/espnow_types.h` — all protocol types, packet structures, field type enums, and constants. Currently protocol version 3 with v2 1470-byte packet support. Keep changes consistent across bridge and remote.
+`device_code/components/esp_tree_common/espnow_types.h` — all protocol types, packet structures, field type enums, and constants. Currently protocol version 3 with v2 1470-byte packet support. Keep changes consistent across bridge and remote.
 
 ### Bridge Responsibilities
 

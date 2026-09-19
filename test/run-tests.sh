@@ -16,4 +16,4 @@ docker exec "$CONTAINER_NAME" pip3 install --break-system-packages pytest pytest
 
 echo "Running tests from $SCRIPT_DIR/tests/..."
 docker exec -e PYTHONUNBUFFERED=1 -e PYTHONPATH=/opt/esp-tree "$CONTAINER_NAME" \
-  python3 -m pytest "$SCRIPT_DIR/tests/" -v "$@"
+  python3 -m pytest /tests/tests/ -v "$@"
