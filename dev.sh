@@ -88,6 +88,7 @@ do_smoke_compile() {
     echo "==> Smoke-compiling representative ESPHome firmware..."
     local secrets="${SCRIPT_DIR}/device_code/demos/secrets.yaml"
     local backup=""
+    local rc=0
 
     if [ -f "$secrets" ]; then
         backup="$(mktemp)"
@@ -102,7 +103,6 @@ do_smoke_compile() {
             rm -f "$secrets"
         fi
     }
-    trap restore_secrets RETURN
 
     cat > "$secrets" <<'EOF_SECRETS'
 wifi_ssid: "ESP_TREE_TEST"
@@ -116,8 +116,13 @@ espnow_psk: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 bridge_api_key: "esp-tree-test-api-key"
 EOF_SECRETS
 
-    bash "${COMPILE_SCRIPT}" espnow-bridge-c5 b
-    bash "${COMPILE_SCRIPT}" espnow-remote-us1 b
+    bash "${COMPILE_SCRIPT}" espnow-bridge-c5 b || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        bash "${COMPILE_SCRIPT}" espnow-remote-us1 b || rc=$?
+    fi
+
+    restore_secrets
+    return "$rc"
 }
 
 do_verify() {
@@ -463,7 +468,7 @@ case "$1" in
             QUICK_MODE=true
             shift
         fi
-        do_qc "$1"
+        do_qc "${1:-}"
         ;;
     flash-usb)
         shift
