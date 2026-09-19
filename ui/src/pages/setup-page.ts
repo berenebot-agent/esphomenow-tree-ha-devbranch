@@ -77,8 +77,11 @@ export class EspSetupWizard extends LitElement {
   @state() private flashApiKey = '';
   @state() private flashEspnowMode = 'lr';
   @state() private flashOtaPassword = '';
-  @state() private flashChipName = 'ESP32-C5';
-  @state() private flashBoardInfo: Record<string, string> | null = CHIP_OPTIONS['ESP32-C5'].board_info;
+  @state() private flashChipName = '';
+  @state() private flashBoardInfo: Record<string, string> | null = null;
+  @state() private flashBrowserDetecting = false;
+  @state() private flashBrowserDetectError = '';
+  @state() private flashDetectedChip = '';
   @state() private flashSecretsWarning = '';
   @state() private flashConfigError = '';
   @state() private flashMac = '';
@@ -703,9 +706,64 @@ export class EspSetupWizard extends LitElement {
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  private async detectFlashBoardInBrowser(): Promise<void> {
+    this.flashBrowserDetecting = true;
+    this.flashBrowserDetectError = '';
+    this.flashDetectedChip = '';
+    let transport: any = null;
+
+    try {
+      if (typeof window === 'undefined' || !window.isSecureContext) {
+        throw new Error('Browser USB detection requires a secure HTTPS page');
+      }
+      const serial = (navigator as Navigator & { serial?: { requestPort: () => Promise<unknown> } }).serial;
+      if (!serial) {
+        throw new Error('Web Serial is not available. Use Chrome or Edge, or select the board manually');
+      }
+
+      const port = await serial.requestPort();
+      const moduleUrl = 'https://unpkg.com/esptool-js@0.6.1/lib/index.js';
+      const esptool = await import(/* @vite-ignore */ moduleUrl);
+      transport = new esptool.Transport(port, true);
+      const loader = new esptool.ESPLoader({
+        transport,
+        baudrate: 115200,
+        terminal: {
+          clean: () => {},
+          writeLine: () => {},
+          write: () => {},
+        },
+        debugLogging: false,
+      });
+
+      const detected = String(await loader.main());
+      const family = chipNameToFamily(detected);
+      if (!family || !CHIP_OPTIONS[family]) {
+        throw new Error(`Detected ${detected}, but there is no supported board mapping for it`);
+      }
+
+      this.flashChipName = family;
+      this.flashBoardInfo = CHIP_OPTIONS[family].board_info;
+      this.flashDetectedChip = detected;
+    } catch (e) {
+      this.flashBrowserDetectError = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (transport) {
+        try {
+          await transport.disconnect();
+        } catch {
+          // Ignore disconnect failures after detection.
+        }
+      }
+      this.flashBrowserDetecting = false;
+    }
+  }
+
   private onFlashChipChange(chipName: string): void {
     this.flashChipName = chipName;
     this.flashBoardInfo = CHIP_OPTIONS[chipName]?.board_info || null;
+    this.flashDetectedChip = '';
+    this.flashBrowserDetectError = '';
   }
 
   private validateFlashConfig(): boolean {
@@ -1215,7 +1273,10 @@ export class EspSetupWizard extends LitElement {
 
         <label>
           ESP-NOW PSK (64 hex chars)
-          <input type="text" placeholder="32-byte hex key" .value=${this.flashPsk} @input=${(e: Event) => this.flashPsk = (e.target as HTMLInputElement).value} />
+          <div class="flash-key-row">
+            <input type="text" placeholder="32-byte hex key" .value=${this.flashPsk} @input=${(e: Event) => this.flashPsk = (e.target as HTMLInputElement).value} />
+            <button class="btn btn-outline btn-sm" @click=${() => this.flashPsk = this.generateRandomHex(32)}>Generate</button>
+          </div>
         </label>
 
         <label>
@@ -1254,15 +1315,28 @@ export class EspSetupWizard extends LitElement {
 
         <label>
           Board
-          <select .value=${this.flashChipName} @change=${(e: Event) => this.onFlashChipChange((e.target as HTMLSelectElement).value)}>
-            ${Object.entries(CHIP_OPTIONS).map(([key, val]) => html`
-              <option value=${key} ?selected=${this.flashChipName === key}>${val.label}</option>
-            `)}
-          </select>
+          <div class="flash-key-row">
+            <select .value=${this.flashChipName} @change=${(e: Event) => this.onFlashChipChange((e.target as HTMLSelectElement).value)}>
+              <option value="">-- Detect or select board --</option>
+              ${Object.entries(CHIP_OPTIONS).map(([key, val]) => html`
+                <option value=${key} ?selected=${this.flashChipName === key}>${val.label}</option>
+              `)}
+            </select>
+            <button class="btn btn-outline btn-sm" @click=${() => void this.detectFlashBoardInBrowser()} ?disabled=${this.flashBrowserDetecting}>
+              ${this.flashBrowserDetecting ? 'Detecting...' : 'Detect Connected ESP'}
+            </button>
+          </div>
         </label>
 
+        ${this.flashDetectedChip ? html`
+          <div class="chip-badge detected">Detected: ${this.flashDetectedChip} → ${CHIP_OPTIONS[this.flashChipName]?.label || this.flashChipName}</div>
+        ` : nothing}
+        ${this.flashBrowserDetectError ? html`
+          <div class="flash-warning">Automatic detection failed: ${this.flashBrowserDetectError}. You can select the board manually.</div>
+        ` : nothing}
+
         <div class="flash-warning">
-          Flashing happens from this browser after compile completes. Pick the board that matches the bridge hardware you are about to connect by USB.
+          Connect the new ESP to this computer by USB and click Detect Connected ESP before compiling. Detection uses Web Serial in Chrome/Edge. Manual board selection is available as a fallback.
         </div>
 
         <button class="btn btn-primary" @click=${() => this.onSubmitFlashConfig()} ?disabled=${!this.flashChipName || !this.flashName.trim()}>Compile Bridge Firmware</button>
