@@ -393,7 +393,7 @@ export const api = {
   triggerScan: () => request<{ success: boolean; error?: string }>('/api/bridge/scan', { method: 'POST' }),
   getScanLog: () => request<string>('/api/bridge/scan-log'),
   getBridges: () => request<ConfiguredBridge[]>('/api/bridges'),
-  scanSerialPorts: () => request<SerialPort[]>('/api/serial/ports'),
+  scanSerialPorts: () => request<{ ports: SerialPort[] }>('/api/serial/ports').then(result => result.ports),
   addBridge: (host: string, port: number = 80, name?: string, api_key?: string, hostname?: string, transport: string = "wifi", serial_port?: string, baud: number = 460800) =>
     request<ConfiguredBridge>('/api/bridges', {
       method: 'POST',
