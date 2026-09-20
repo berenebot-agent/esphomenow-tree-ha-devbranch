@@ -927,6 +927,44 @@ export class EspSetupWizard extends LitElement {
     }
   }
 
+  private get flashBackLabel(): string {
+    if (this.flashStage === 'detecting' || (this.flashStage === 'error' && this.flashDetectError)) {
+      return '← Back to Flash';
+    }
+    if (this.flashStage === 'flashing' || this.flashStage === 'compiling' || this.flashStage === 'error') {
+      return '← Back to Configure';
+    }
+    return '← Back';
+  }
+
+  private async handleFlashBack(): Promise<void> {
+    if (this.flashStage === 'detecting' || (this.flashStage === 'error' && this.flashDetectError)) {
+      if (this.flashDetectTimer) {
+        clearInterval(this.flashDetectTimer);
+        this.flashDetectTimer = null;
+      }
+      this.flashDetectElapsed = 0;
+      this.flashDetectError = '';
+      this.flashStage = 'flashing';
+      return;
+    }
+
+    if (this.flashStage === 'flashing' || this.flashStage === 'error') {
+      this.resetFlashWizard();
+      return;
+    }
+
+    if (this.flashStage === 'compiling') {
+      if (this.flashMac) {
+        await api.cancelCompile(this.flashMac).catch(() => {});
+      }
+      this.resetFlashWizard();
+      return;
+    }
+
+    this.onBackToChoose();
+  }
+
   private resetFlashWizard(): void {
     this.cleanupFlashTimers();
     this.flashStage = 'config';
@@ -1039,7 +1077,7 @@ export class EspSetupWizard extends LitElement {
 
             ${this.step1Choice === 'new' && this.step1 !== 'complete' ? html`
               <div class="choice-back">
-                <button class="btn btn-outline btn-sm" @click=${this.onBackToChoose}>\u2190 Back</button>
+                <button class="btn btn-outline btn-sm" @click=${() => void this.handleFlashBack()}>${this.flashBackLabel}</button>
               </div>
               ${this.renderFlashTab()}
             ` : nothing}
@@ -1401,7 +1439,7 @@ export class EspSetupWizard extends LitElement {
               : 'Browser USB flashing is unavailable here. Flash the downloaded factory binary locally, then continue to detection.'}
           </p>
           <div class="flash-error-actions">
-            <button class="btn btn-outline" @click=${() => this.resetFlashWizard()}>Back to Config</button>
+            <button class="btn btn-outline" @click=${() => void this.handleFlashBack()}>Back to Configure</button>
             <button class="btn btn-primary" @click=${() => void this.startDetection()} ?disabled=${!this.flashMac}>I Flashed It, Detect Bridge</button>
           </div>
           ${this.flashCompileLog ? html`
@@ -1421,6 +1459,9 @@ export class EspSetupWizard extends LitElement {
             <span class="spinner large"></span>
             <p>Waiting for bridge to appear on network...</p>
           </div>
+          <div class="flash-error-actions">
+            <button class="btn btn-outline" @click=${() => void this.handleFlashBack()}>Back to Flash</button>
+          </div>
         </div>
       ` : nothing}
 
@@ -1438,7 +1479,7 @@ export class EspSetupWizard extends LitElement {
           <div class="error-block">
             <p>${this.flashCompileError || this.flashFlashError || this.flashDetectError || 'An error occurred'}</p>
             <div class="flash-error-actions">
-              <button class="btn btn-outline" @click=${() => this.resetFlashWizard()}>Back to Config</button>
+              <button class="btn btn-outline" @click=${() => void this.handleFlashBack()}>${this.flashDetectError ? 'Back to Flash' : 'Back to Configure'}</button>
               ${this.flashDetectError ? html`
                 <button class="btn btn-outline" @click=${() => { this.flashStage = 'detecting'; this.flashDetectError = ''; void this.startDetection(); }}>Retry Scan</button>
                 <button class="btn btn-outline" @click=${() => { this.resetFlashWizard(); this.step1Choice = 'choose'; this.step1 = 'choose'; }}>Skip</button>
