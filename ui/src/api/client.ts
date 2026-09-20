@@ -389,7 +389,12 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(patch)
     }),
-  discoverBridges: () => request<DiscoverBridgesResponse>('/api/bridge/discover'),
+  discoverBridges: () =>
+    request<DiscoverBridgesResponse | DiscoveredBridge[]>('/api/bridge/discover').then(result =>
+      Array.isArray(result)
+        ? { bridges: result, scanning: true }
+        : { bridges: result.bridges ?? [], scanning: Boolean(result.scanning) }
+    ),
   triggerScan: () => request<{ success: boolean; error?: string }>('/api/bridge/scan', { method: 'POST' }),
   getScanLog: () => request<string>('/api/bridge/scan-log'),
   getBridges: () => request<ConfiguredBridge[]>('/api/bridges'),
