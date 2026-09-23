@@ -23,8 +23,11 @@ esp32:
       CONFIG_ESP_MAIN_TASK_STACK_SIZE: "12288"
 
 logger:
-  hardware_uart: USB_CDC
-  baud_rate: 115200
+  # The logger shares UART0 with the bridge transport on hardware-UART boards.
+  # baud_rate must match the bridge_uart baud_rate below (460800); a mismatch
+  # makes the log stream unreadable. On boards wired via native USB CDC instead,
+  # set `hardware_uart: USB_CDC` here.
+  baud_rate: 460800
   level: DEBUG
 
 ota:
@@ -38,17 +41,30 @@ external_components:
       path: ../components
     components: [esp_tree_bridge, esp_tree_common]
 
+# web_server_base (and the OTA platform) require the `network` component, which
+# is normally pulled in by wifi:. In serial mode there is no wifi: block, so it
+# must be requested explicitly or config validation fails with
+# "Component web_server_base requires component network".
+network:
+
 web_server:
   port: 80
 
 # UART bus for serial transport — baud_rate and rx_buffer_size are configured here.
-# For USB CDC (ESP32-C5/S3/S2), hardware_uart: USB_CDC is used — no tx_pin/rx_pin needed.
-# For hardware UART (CP2102, CH340), specify tx_pin and rx_pin instead of hardware_uart.
+# For hardware UART adapters (CP2102, CH340) use tx_pin/rx_pin. The larger
+# rx_buffer_size is required here: the ESP32 hardware FIFO is only 128 bytes and
+# data arrives at ~46 KB/s at 460800 baud, so a small buffer overflows during
+# ESP-NOW radio operations.
+#
+# NOTE: `hardware_uart:` is NOT a valid option under `uart:` in ESPHome — it only
+# exists under `logger:`. A previous revision of this file used
+# `hardware_uart: USB_CDC` here, which fails validation outright.
 uart:
   - id: bridge_uart
     baud_rate: 460800
-    rx_buffer_size: 8192
-    hardware_uart: USB_CDC
+    rx_buffer_size: 16384
+    tx_pin: GPIO1
+    rx_pin: GPIO3
 
 esp_tree_bridge:
   id: bridge_component
@@ -60,6 +76,8 @@ esp_tree_bridge:
   api_key: !secret bridge_api_key
   serial_transport:
     uart_id: bridge_uart
-    usb_cdc: {}
+    # `usb_cdc: {}` is only correct on boards wired via native USB (ESP32-C5/S3/S2
+    # native CDC). This demo uses a hardware UART adapter (tx_pin/rx_pin above),
+    # so USE_USB_CDC must NOT be set — omit usb_cdc entirely.
 
 # No wifi: block — serial mode (WiFi not required when serial_transport is present)
