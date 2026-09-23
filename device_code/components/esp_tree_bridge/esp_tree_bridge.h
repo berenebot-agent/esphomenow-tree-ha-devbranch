@@ -6,7 +6,13 @@
 #include "bridge_ota_manager.h"
 #include "bridge_api_types.h"
 #ifdef USE_SERIAL
-namespace bridge_api { class BridgeApiSerialTransport; }
+// bridge_api is nested in esphome::esp_tree (see bridge_api_types.h), so the
+// forward declaration has to open those namespaces first -- declaring
+// `namespace bridge_api` at global scope does not match the real type and the
+// unique_ptr member below fails to compile.
+namespace esphome { namespace esp_tree { namespace bridge_api {
+class BridgeApiSerialTransport;
+}}}  // namespace esphome::esp_tree::bridge_api
 #else
 #include "bridge_api_proto_ws.h"
 #endif

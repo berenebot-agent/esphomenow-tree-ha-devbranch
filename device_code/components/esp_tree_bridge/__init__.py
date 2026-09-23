@@ -111,8 +111,11 @@ async def to_code(config):
     # MQTT discovery prefix is only used when mqtt: block is present in YAML.
     if "mqtt" in core.CORE.loaded_integrations:
         cg.add(var.set_mqtt_discovery_prefix(config.get(CONF_MQTT_DISCOVERY_PREFIX, "homeassistant")))
-        # ESPHome's mqtt component already emits cg.add_define("USE_MQTT")
-        # whenever mqtt: is loaded, and defines.h is generated after all
-        # components run to_code. Adding our own -DUSE_MQTT build flag is
-        # therefore redundant and triggers dozens of "USE_MQTT redefined"
-        # warnings per build, so it is deliberately omitted.
+        cg.add_build_flag("-DUSE_MQTT")
+        # NOTE: this build flag is required, not redundant. bridge_mqtt_export.cpp
+        # and .h guard their entire body with `#ifdef USE_MQTT` on line 1, before
+        # including anything -- so defines.h (and ESPHome's own cg.add_define) is
+        # never consulted. Relying on ESPHome's define alone drops the whole
+        # translation unit and fails at link time with undefined references to
+        # ESPTreeBridgeMQTT::*. The cost is "USE_MQTT redefined" warnings, which
+        # are harmless.
