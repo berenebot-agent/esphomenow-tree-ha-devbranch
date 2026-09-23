@@ -23,10 +23,13 @@ esp32:
       CONFIG_ESP_MAIN_TASK_STACK_SIZE: "12288"
 
 logger:
-  # The logger shares UART0 with the bridge transport on hardware-UART boards.
-  # baud_rate must match the bridge_uart baud_rate below (460800); a mismatch
-  # makes the log stream unreadable. On boards wired via native USB CDC instead,
-  # set `hardware_uart: USB_CDC` here.
+  # Pin the console to UART0 explicitly. Without `hardware_uart:` ESPHome
+  # defaults an ESP32-C5/C6/S3 to USB-Serial-JTAG and generates
+  # CONFIG_ESP_CONSOLE_UART_NUM=-1, which routes the log stream AND any panic
+  # backtrace to native USB — a port this board does not use. On a CH340/CP2102
+  # wired to tx_pin/rx_pin below, that makes an early crash indistinguishable
+  # from a silent hang. Keep this on the same UART (and baud) as bridge_uart.
+  hardware_uart: UART0
   baud_rate: 460800
   level: DEBUG
 

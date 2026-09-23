@@ -174,6 +174,22 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
                 "",
             ])
 
+        # web_server_base (and the web_server OTA platform) declare a dependency
+        # on ESPHome's `network` component, which `wifi:` would normally supply.
+        # A bridge scaffolded WITHOUT a wifi secret (the serial-transport case)
+        # still emits web_server:/ota:, so request `network` explicitly or
+        # validation fails with "Component web_server_base requires component
+        # network" and the compile job dies at config load.
+        wants_web_or_ota = (
+            node.get("web_server_port") is not None
+            or node.get("ota_password") is not None
+        )
+        if node.get("wifi_ssid_secret") is None and wants_web_or_ota:
+            lines.extend([
+                "network:",
+                "",
+            ])
+
         if node.get("web_server_port") is not None:
             port = node.get("web_server_port") or 80
             lines.extend([
