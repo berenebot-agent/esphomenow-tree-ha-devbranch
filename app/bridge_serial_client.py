@@ -45,6 +45,9 @@ class SerialBridgeClient:
         self._send_lock = threading.Lock()
         self._pending: dict[str, asyncio.Future[pb.Envelope]] = {}
         self._pending_ota_start: dict[str, asyncio.Future[pb.OtaAccepted]] = {}
+        self._auth_challenge_future: asyncio.Future[pb.Envelope] | None = None
+        self._auth_ok_future: asyncio.Future[pb.Envelope] | None = None
+        self._auth_already_future: asyncio.Future[pb.Envelope] | None = None
         self._ota_chunk_request_handler: Callable[[pb.OtaChunkRequest], Awaitable[None]] | None = None
         self._ota_status_handler: Callable[[pb.OtaStatus], Awaitable[None]] | None = None
         self._ota_aborted_handler: Callable[[pb.OtaAborted], Awaitable[None]] | None = None
@@ -186,22 +189,52 @@ class SerialBridgeClient:
         client_hello = pb.Envelope(
             request_id=uuid.uuid4().hex,
             api_version=API_VERSION,
-            client_hello=pb.ClientHello(client_kind=CLIENT_KIND, request_full_snapshot=True, integration_version="addon"),
+            # ClientHello has no client_kind field (see esp_tree_runtime.proto:
+            # request_full_snapshot / integration_version / known_remote_schemas).
+            # Passing it raised ValueError before a single byte was sent, so the
+            # client connected and immediately dropped, retrying forever.
+            client_hello=pb.ClientHello(request_full_snapshot=True, integration_version="addon"),
         )
         self._send_envelope_sync(client_hello)
 
         auth_challenge_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
         auth_ok_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
+        # The device keeps its AUTHENTICATED state across serial reconnects: a UART
+        # has no connection signal, so the bridge cannot tell that the add-on went
+        # away. On reconnect it therefore answers ClientHello with a full_snapshot
+        # instead of a challenge. Wait for either, or the client times out, drops
+        # the link and reconnects forever.
+        already_authed_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
         self._auth_challenge_future = auth_challenge_future
         self._auth_ok_future = auth_ok_future
+        self._auth_already_future = already_authed_future
 
         try:
-            challenge_env = await asyncio.wait_for(asyncio.shield(auth_challenge_future), timeout=10)
-        except asyncio.TimeoutError:
-            raise RuntimeError("timeout waiting for auth_challenge from bridge")
+            done, _ = await asyncio.wait(
+                {auth_challenge_future, already_authed_future},
+                timeout=10,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
         finally:
             self._auth_challenge_future = None
+            self._auth_already_future = None
 
+        if already_authed_future in done:
+            # Session was still valid on the device; no challenge/response needed.
+            logger.info("serial bridge %s: device already authenticated, resuming session", self._port_desc())
+            first_env = already_authed_future.result()
+            self._auth_ok_future = None
+            self.connected = True
+            await self._on_connection_change(self, True)
+            if first_env is not None:
+                asyncio.ensure_future(self._on_frame(self, first_env, first_env.SerializeToString()))
+            await self._await_session_end()
+            return
+
+        if auth_challenge_future not in done:
+            raise RuntimeError("timeout waiting for auth_challenge from bridge")
+
+        challenge_env = auth_challenge_future.result()
         challenge = challenge_env.auth_challenge
         client_nonce = secrets.token_bytes(16)
         digest_input = (
@@ -238,6 +271,22 @@ class SerialBridgeClient:
         self.bridge_mac = normalize_mac(auth_env.auth_ok.bridge.bridge_mac)
         self._connected = True
         await self._on_connection_change(self, True)
+        await self._await_session_end()
+
+    async def _await_session_end(self) -> None:
+        """Hold the connection open while the reader thread owns the port.
+
+        _reconnect_loop() tears the port down in its finally block as soon as
+        _run_auth() returns, so returning straight after a successful handshake
+        killed the reader thread immediately: the client reported connected, then
+        instantly disconnected and reconnected in a loop. Wait here until the
+        reader thread dies (read error or the no-data timeout), which is what
+        actually ends a session for a UART.
+        """
+        while not self._stop_event.is_set():
+            if self._reader_thread is None or not self._reader_thread.is_alive():
+                return
+            await asyncio.sleep(0.5)
 
     def _read_loop(self) -> None:
         buf = bytearray()
@@ -296,6 +345,12 @@ class SerialBridgeClient:
                 return
             if kind in ("auth_failed", "auth_ok"):
                 self._loop.call_soon_threadsafe(self._auth_ok_future.set_result, env)
+                return
+            # Device still holds a valid session (UART has no disconnect signal), so
+            # it replies to ClientHello with a snapshot rather than a challenge.
+            if kind == "full_snapshot" and self._auth_already_future is not None \
+                    and not self._auth_already_future.done():
+                self._loop.call_soon_threadsafe(self._auth_already_future.set_result, env)
                 return
 
         self._loop.call_soon_threadsafe(self._dispatch_frame, env, data)
