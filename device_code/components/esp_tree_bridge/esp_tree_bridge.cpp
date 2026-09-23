@@ -2200,6 +2200,7 @@ void ESPTreeBridge::register_web_handler_() {
   web_server_base::global_web_server_base->add_handler(new JsonHandler(this));
   web_server_base::global_web_server_base->add_handler(new BridgeJsonHandler(this));
 }
+#endif  // !USE_SERIAL
 
 void ESPTreeBridge::reset_ota_upload_state_(bool release_memory) {
   ota_upload_expected_size_ = 0;
@@ -2553,6 +2554,7 @@ void ESPTreeBridge::on_data_sent_(const uint8_t *, esp_now_send_status_t status)
 #endif
 
 // --- V2 Web UI additions ---
+#ifndef USE_SERIAL
 
 static constexpr uint32_t V2_SESSION_TIMEOUT_MS = 86400000; // 24h
 static constexpr size_t V2_TOKEN_HEX_BYTES = 16;             // 32 hex chars
