@@ -27,7 +27,7 @@ When talking to the user, be concise — answer in 1-3 sentences or fewer. Avoid
 ├── logs/                    ← Debug logs (gitignored)
 ├── scripts/                 ← Add-on utility scripts (log_listener.py, etc.)
 ├── device_code/
-│   ├── components/components/  ← ESPHome external components
+│   ├── components/           ← ESPHome external components
 │   │   ├── esp_tree_bridge/        ← Bridge: WiFi + MQTT + ESP-NOW LR
 │   │   ├── esp_tree_remote/        ← Remote: ESP-NOW LR only
 │   │   ├── espnow_82xx_remote/     ← Legacy ESP8266
