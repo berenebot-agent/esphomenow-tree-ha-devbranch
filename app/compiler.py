@@ -578,9 +578,9 @@ class ESPHomeCompiler:
         try:
             proc = await asyncio.create_subprocess_exec(
                 self._esptool_bin(),
-                "chip-id",
                 "--port",
                 port,
+                "chip-id",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 start_new_session=True,
