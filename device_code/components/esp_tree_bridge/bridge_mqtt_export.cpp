@@ -1097,6 +1097,12 @@ void ESPTreeBridgeMQTT::on_schema_complete(const uint8_t *mac, uint8_t total_ent
   (void)total_entities;
 }
 
+void ESPTreeBridgeMQTT::on_discovery_confirmed(const uint8_t *mac, uint8_t entity_index, bool success) {
+  if (bridge_ != nullptr) {
+    bridge_->protocol_discovery_confirmed(mac, entity_index, success);
+  }
+}
+
 void ESPTreeBridgeMQTT::set_bridge_diag(uint32_t uptime_s, uint8_t remotes_online, int8_t rssi,
                                           uint8_t wifi_channel, int ram_pct, int cpu_pct,
                                           uint8_t remotes_direct) {

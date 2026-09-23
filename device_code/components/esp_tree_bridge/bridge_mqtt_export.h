@@ -83,6 +83,7 @@ class ESPTreeBridgeMQTT : public mqtt::CustomMQTTDevice {
   void queue_availability(const uint8_t *mac, bool online, const char *reason);
   void queue_clear_entities(const uint8_t *mac, const std::vector<espnow_entity_schema_t> &old_entities);
   void on_schema_complete(const uint8_t *mac, uint8_t total_entities);
+  void on_discovery_confirmed(const uint8_t *mac, uint8_t entity_index, bool success);
   void queue_remote_diag_refresh(const uint8_t *mac);
 
  private:

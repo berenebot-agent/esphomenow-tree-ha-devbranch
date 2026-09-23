@@ -164,6 +164,7 @@ message BridgeIdentity {
   string project_version = 8;
   string firmware_build_date = 9;
   string api_server = 10;
+  string chip_name = 11;
 }
 
 message BridgeCapabilities {
@@ -212,7 +213,7 @@ message RemoteRuntime {
   string parent_mac = 3;
   uint32 hops_to_bridge = 4;
   sint32 rssi = 5;
-  int32 last_seen_bridge_uptime_s = 7;
+  int32 last_seen_bridge_uptime_s = 7;  // Absolute bridge uptime (seconds) when remote was last seen. Consumers compute: elapsed = current_bridge_uptime - this_value
   string session_id = 8;
   uint32 last_tx_counter = 9;
   uint32 uptime_s = 10;
@@ -308,9 +309,6 @@ message RemoteStateEvent {
   uint32 tx_counter = 4;
   repeated EntityState states = 5;
   uint64 observed_unix_ms = 6;
-  uint32 uptime_s = 7;
-  sint32 rssi = 8;
-  uint32 hops_to_bridge = 9;
 }
 
 message RemoteSchemaChangedEvent {
@@ -336,10 +334,16 @@ message TopologyChangedEvent {
   uint32 uptime_s = 7;
 }
 
+message RemoteLastSeen {
+  string remote_mac = 1;
+  uint32 last_seen_bridge_uptime_s = 2;
+}
+
 message BridgeHeartbeat {
   string bridge_mac = 1;
   uint64 bridge_unix_ms = 2;
   uint32 uptime_s = 3;
+  repeated RemoteLastSeen remote_last_seen = 4;
 }
 
 message CommandRequest {

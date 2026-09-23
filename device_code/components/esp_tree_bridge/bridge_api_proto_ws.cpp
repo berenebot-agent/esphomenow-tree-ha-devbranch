@@ -11,6 +11,7 @@
 #include <cerrno>
 #include <cctype>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <set>
 
@@ -123,6 +124,8 @@ struct BridgeApiProtoWsTransport::Impl {
   uint32_t last_status_log_ms{0};
   uint32_t bytes_sent_since_last_log{0};
   uint32_t bytes_received_since_last_log{0};
+  std::deque<std::vector<uint8_t>> outbound_frames;
+  size_t outbound_bytes{0};
   std::array<uint8_t, runtime_pb::kRuntimeServerNonceBytes> server_nonce{};
   mutable std::mutex mutex;
   std::mutex send_mutex;
@@ -132,6 +135,8 @@ struct BridgeApiProtoWsTransport::Impl {
   uint32_t ota_max_chunk_size{kMaxChunkSize};
   uint32_t ota_max_chunks_per_batch{6};
   static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 30000;
+  static constexpr size_t MAX_OUTBOUND_QUEUE_FRAMES = 256;
+  static constexpr size_t MAX_OUTBOUND_QUEUE_BYTES = 256 * 1024;
 
 #if USE_ESP32
   struct WsTaskContext {
@@ -244,6 +249,7 @@ struct BridgeApiProtoWsTransport::Impl {
 
   void run_socket_task(WsTaskContext *ctx) {
     send_auth_challenge();
+    flush_pending_sends();
     read_loop(ctx->fd);
     finish_session(ctx->fd);
     httpd_req_async_handler_complete(ctx->req);
@@ -302,14 +308,42 @@ struct BridgeApiProtoWsTransport::Impl {
     return send_exact(fd, header, header_len) && (len == 0 || send_exact(fd, payload, len));
   }
 
+  bool flush_pending_sends() {
+#if USE_ESP32
+    while (true) {
+      std::vector<uint8_t> payload;
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!connected || active_fd < 0) return false;
+        if (outbound_frames.empty()) return true;
+        payload = std::move(outbound_frames.front());
+        outbound_bytes -= payload.size();
+        outbound_frames.pop_front();
+      }
+      const bool ok = payload.empty() ? send_frame(0x2, nullptr, 0) : send_frame(0x2, payload.data(), payload.size());
+      if (!ok) {
+        close_client();
+        return false;
+      }
+      if (!payload.empty()) {
+        std::lock_guard<std::mutex> lock(mutex);
+        bytes_sent_since_last_log += payload.size();
+      }
+    }
+#else
+    return false;
+#endif
+  }
+
   void read_loop(int fd) {
     while (is_active_fd(fd)) {
+      flush_pending_sends();
       fd_set read_fds;
       FD_ZERO(&read_fds);
       FD_SET(fd, &read_fds);
       timeval tv{};
-      tv.tv_sec = 1;
-      tv.tv_usec = 0;
+      tv.tv_sec = 0;
+      tv.tv_usec = 100000;
       int ret = select(fd + 1, &read_fds, nullptr, nullptr, &tv);
       if (ret < 0) break;
       if (ret == 0) continue;
@@ -333,6 +367,7 @@ struct BridgeApiProtoWsTransport::Impl {
       }
       if (opcode != 0x2) break;
       handle_binary(payload);
+      flush_pending_sends();
       {
         std::lock_guard<std::mutex> lock(mutex);
         bytes_received_since_last_log += payload.size();
@@ -353,6 +388,8 @@ struct BridgeApiProtoWsTransport::Impl {
       connected = false;
       authenticated = false;
       active_fd = -1;
+      outbound_frames.clear();
+      outbound_bytes = 0;
       ota_chunk_request_id.clear();
       ota_job_id.clear();
       ota_pending_sequences.clear();
@@ -365,17 +402,28 @@ struct BridgeApiProtoWsTransport::Impl {
 
   bool send_binary(const std::vector<uint8_t> &payload) {
 #if USE_ESP32
-    bool ok;
-    if (payload.empty()) {
-      ok = send_frame(0x2, nullptr, 0);
-    } else {
-      ok = send_frame(0x2, payload.data(), payload.size());
-    }
-    if (ok && !payload.empty()) {
+    bool should_close = false;
+    size_t queued_frames = 0;
+    size_t queued_bytes = 0;
+    {
       std::lock_guard<std::mutex> lock(mutex);
-      bytes_sent_since_last_log += payload.size();
+      if (!connected || active_fd < 0) return false;
+      queued_frames = outbound_frames.size();
+      queued_bytes = outbound_bytes;
+      if (queued_frames >= MAX_OUTBOUND_QUEUE_FRAMES || queued_bytes + payload.size() > MAX_OUTBOUND_QUEUE_BYTES) {
+        should_close = true;
+      } else {
+        outbound_frames.push_back(payload);
+        outbound_bytes += payload.size();
+      }
     }
-    return ok;
+    if (should_close) {
+      ESP_LOGW(TAG, "Closing protobuf client: outbound queue exceeded limits (%zu frames, %zu bytes)",
+               queued_frames, queued_bytes);
+      close_client();
+      return false;
+    }
+    return true;
 #else
     (void)payload;
     return false;
@@ -552,6 +600,7 @@ struct BridgeApiProtoWsTransport::Impl {
         std::vector<uint8_t> err;
         runtime_pb::auth_failed_envelope(err, env.request_id, "auth_required", "Authenticate before sending runtime requests");
         send_binary(err);
+        flush_pending_sends();
         close_client();
         return;
       }
@@ -560,6 +609,7 @@ struct BridgeApiProtoWsTransport::Impl {
         std::vector<uint8_t> err;
         runtime_pb::auth_failed_envelope(err, env.request_id, "auth_failed", "Authentication failed");
         send_binary(err);
+        flush_pending_sends();
         close_client();
         return;
       }
@@ -638,6 +688,8 @@ struct BridgeApiProtoWsTransport::Impl {
       connected = false;
       authenticated = false;
       active_fd = -1;
+      outbound_frames.clear();
+      outbound_bytes = 0;
     }
     if (fd >= 0) {
       send_frame(0x8, nullptr, 0);
