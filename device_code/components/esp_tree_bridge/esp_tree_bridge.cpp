@@ -416,6 +416,30 @@ void ESPTreeBridge::register_instance_(ESPTreeBridge *instance) { active_instanc
 std::string ESPTreeBridge::mac_key_string_(const uint8_t *mac) { return mac_hex(mac); }
 
 bool ESPTreeBridge::init_wifi_and_espnow_() {
+  // ESP-NOW requires an initialised WiFi stack. In WiFi mode ESPHome's `wifi:`
+  // component does that for us, so esp_now_init() alone was sufficient. In serial
+  // mode there is no `wifi:` component, so nothing ever called esp_wifi_init() and
+  // esp_now_init() ran against an uninitialised stack, faulting the CPU early in
+  // boot (Guru Meditation / Instruction access fault, reset loop).
+  //
+  // Initialise WiFi ourselves *only when nothing else already has* — the
+  // ESP_ERR_WIFI_NOT_INIT probe keeps WiFi mode's existing behaviour intact and
+  // makes both transports share one code path. Mirrors ESPNowLRRemote.
+  wifi_mode_t current_mode;
+  if (esp_wifi_get_mode(&current_mode) == ESP_ERR_WIFI_NOT_INIT) {
+    wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_err_t wifi_err = esp_wifi_init(&wifi_cfg);
+    if (wifi_err != ESP_OK) {
+      ESP_LOGE(TAG, "esp_wifi_init failed: %s", esp_err_to_name(wifi_err));
+      return false;
+    }
+    wifi_err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (wifi_err != ESP_OK) {
+      ESP_LOGE(TAG, "esp_wifi_set_mode failed: %s", esp_err_to_name(wifi_err));
+      return false;
+    }
+  }
+
   if (esp_now_init() != ESP_OK) return false;
   wifi_protocols_t protocols{};
   if (espnow_mode_ == "lr") {
