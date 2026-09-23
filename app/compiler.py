@@ -568,7 +568,7 @@ class ESPHomeCompiler:
                 self._serial_reserved = False
 
 
-    async def detect_chip_on_port(self, port: str) -> dict[str, Any]:
+    async def detect_chip_on_port(self, port: str, before: str | None = None) -> dict[str, Any]:
         log_path = self.devices_root / "_chip_detect" / "detect.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -576,11 +576,13 @@ class ESPHomeCompiler:
         except Exception as exc:
             return {"chip_name": "unknown", "board_info": None, "error": f"esptool setup failed: {exc}"}
         try:
+            # --before is a global option, so it must precede the subcommand too.
+            args = [self._esptool_bin(), "--port", port]
+            if before:
+                args += ["--before", before]
+            args += ["chip-id"]
             proc = await asyncio.create_subprocess_exec(
-                self._esptool_bin(),
-                "--port",
-                port,
-                "chip-id",
+                *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 start_new_session=True,

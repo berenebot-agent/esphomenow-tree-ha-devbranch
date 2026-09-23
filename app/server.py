@@ -352,6 +352,7 @@ class SerialFlashRequest(BaseModel):
 
 class FlashWizardDetectChipRequest(BaseModel):
     port: str
+    before: str | None = None
 
 
 class FlashWizardSubmitRequest(BaseModel):
@@ -1635,7 +1636,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/bridge/flash-wizard/detect-chip")
     async def flash_wizard_detect_chip(body: FlashWizardDetectChipRequest) -> dict[str, Any]:
-        result = await compiler.detect_chip_on_port(body.port)
+        result = await compiler.detect_chip_on_port(body.port, body.before)
         return result
 
     PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FF"
