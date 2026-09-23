@@ -135,6 +135,14 @@ class SerialBridgeClient:
 
     def _resolve_port(self) -> str | None:
         configured = self.target.serial_port
+        # A pyserial URL (e.g. socket://host:460800) is handed straight to
+        # serial.Serial - there is nothing local to enumerate, and the remote end
+        # is what owns the device. This is what lets the add-on drive a bridge
+        # whose UART lives on another host (the add-on container/VM usually has no
+        # USB passthrough, so a network serial bridge is the only route).
+        if "://" in configured:
+            return configured
+
         available = list(serial.tools.list_ports.comports())
 
         for port in available:
@@ -143,7 +151,7 @@ class SerialBridgeClient:
 
         for port in available:
             if configured and (configured.lower() in (port.description or "").lower()
-                               or configured.lower() in (port.hwid or "").lower()):
+                                or configured.lower() in (port.hwid or "").lower()):
                 self.target.serial_port = port.device
                 logger.info("serial bridge: hotplug resolved %s → %s", configured, port.device)
                 return port.device
