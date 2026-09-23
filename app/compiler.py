@@ -524,7 +524,7 @@ class ESPHomeCompiler:
                     port,
                     "--baud",
                     "460800",
-                    "write_flash",
+                    "write-flash",
                     "0x0",
                     str(factory_path),
                     stdout=asyncio.subprocess.PIPE,
@@ -578,7 +578,7 @@ class ESPHomeCompiler:
         try:
             proc = await asyncio.create_subprocess_exec(
                 self._esptool_bin(),
-                "chip_id",
+                "chip-id",
                 "--port",
                 port,
                 stdout=asyncio.subprocess.PIPE,
