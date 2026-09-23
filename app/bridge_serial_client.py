@@ -163,8 +163,11 @@ class SerialBridgeClient:
         if not port:
             raise ConnectionError(f"serial port {self.target.serial_port} not found")
         self._stop_event.clear()
-        ser = serial.Serial(
-            port=port,
+        # serial.Serial() only accepts a device path; pyserial's URL schemes
+        # (socket://, rfc2217://, ...) are handled by serial_for_url(), which also
+        # accepts plain paths. Use it for everything so both work.
+        ser = serial.serial_for_url(
+            url=port,
             baudrate=self.target.baud,
             timeout=SERIAL_READ_TIMEOUT,
         )
