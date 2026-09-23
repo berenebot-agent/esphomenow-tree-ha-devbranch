@@ -382,7 +382,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.280")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.281")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -891,31 +891,52 @@ def create_app() -> FastAPI:
         reason = str(result.get("reason") or "")
         return flow_type == "create_entry" or (flow_type == "abort" and reason == "already_configured")
 
+    async def config_flow_rest(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Call HA core's config-flow REST API through the Supervisor proxy.
+
+        Config flows have NO websocket API — `config_entries/flow/init` and
+        `config_entries/flow/start` both answer "Unknown command." for every handler
+        (verified against a stock integration as a control). Flow creation lives on
+        REST only: POST /api/config/config_entries/flow.
+        """
+        if not settings.supervisor_token:
+            raise RuntimeError("SUPERVISOR_TOKEN not available")
+        import httpx
+
+        url = f"http://supervisor/core/api{path}"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.request(
+                    method,
+                    url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {settings.supervisor_token}",
+                        "Content-Type": "application/json",
+                    },
+                )
+            if resp.status_code >= 400:
+                raise RuntimeError(f"HA {resp.status_code}: {resp.text[:200]}")
+            data = resp.json()
+            return data if isinstance(data, dict) else {}
+        except RuntimeError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - surface as a flow error
+            raise RuntimeError(f"HA config flow request failed: {exc}") from exc
+
     async def start_integration_flow(source: str, config: dict[str, str]) -> dict[str, Any]:
-        msg = await ha_ws_call(
-            {
-                "type": "config_entries/flow/init",
-                "handler": "esp_tree",
-                "context": {"source": source},
-                "data": config,
-                "show_advanced_options": False,
-            },
-            timeout=10.0,
+        return await config_flow_rest(
+            "POST",
+            "/config/config_entries/flow",
+            {"handler": "esp_tree", "context": {"source": source}, "data": config or {}},
         )
-        result = msg.get("result") or {}
-        return result if isinstance(result, dict) else {}
 
     async def configure_integration_flow(flow_id: str, config: dict[str, str]) -> dict[str, Any]:
-        msg = await ha_ws_call(
-            {
-                "type": "config_entries/flow/configure",
-                "flow_id": flow_id,
-                "user_input": config,
-            },
-            timeout=10.0,
+        return await config_flow_rest(
+            "POST",
+            f"/config/config_entries/flow/{flow_id}",
+            {"user_input": config or {}},
         )
-        result = msg.get("result") or {}
-        return result if isinstance(result, dict) else {}
 
     async def request_ha_integration_config_flow() -> dict[str, Any]:
         if not settings.supervisor_token:
