@@ -7,7 +7,7 @@
 set -e
 
 PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOCKER_IMG="ghcr.io/esphome/esphome:latest"
+DOCKER_IMG="ghcr.io/esphome/esphome:2026.4.5"
 CONTAINER_NAME="esplog-master"
 SCREEN_NAME="esplog"
 

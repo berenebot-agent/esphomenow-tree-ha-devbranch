@@ -277,7 +277,7 @@ This has a proper fallback hierarchy. No changes needed.
 
 - [ ] **Step 3: Run linting/type checking**
 
-Run: `cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && python -m py_compile app/bridge_v2_client.py`
+Run: `cd /home/ben/projects/esphomenow-tree-ha && python -m py_compile app/bridge_v2_client.py`
 Expected: No errors
 
 - [ ] **Step 4: Commit**

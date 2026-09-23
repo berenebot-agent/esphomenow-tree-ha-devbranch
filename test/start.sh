@@ -9,7 +9,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CACHE_DIR="${CACHE_DIR:-/home/ben/ai-hermes-agent/cache/ha-tree-addon-cache}"
+CACHE_DIR="${CACHE_DIR:-/home/ben/projects/cache/ha-tree-addon-cache}"
 ENV_FILE="${SCRIPT_DIR}/.env"
 IMAGE_NAME="${IMAGE_NAME:-esphome-standalone-test}"
 AUTO_BUILD="${AUTO_BUILD:-1}"

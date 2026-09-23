@@ -138,7 +138,7 @@ Modify: `app/bridge_v2_client.py:502-507`
 
 Run in `ha_integration/`:
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && python -m grpc_tools.protoc \
+cd /home/ben/projects/esphomenow-tree-ha && python -m grpc_tools.protoc \
   -I./custom_components/esp_tree/protobuf \
   --python_out=./custom_components/esp_tree/protobuf/generated \
   --pyi_out=./custom_components/esp_tree/protobuf/generated \
@@ -149,7 +149,7 @@ cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && python -m grpc_tools.protoc \
 
 Run in root directory:
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && python -m grpc_tools.protoc \
+cd /home/ben/projects/esphomenow-tree-ha && python -m grpc_tools.protoc \
   -I./app/protobuf \
   --python_out=./app/protobuf/generated \
   --pyi_out=./app/protobuf/generated \
@@ -163,7 +163,7 @@ cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && python -m grpc_tools.protoc \
 - [ ] **Step 1: Run quality control**
 
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && ./qc.sh
+cd /home/ben/projects/esphomenow-tree-ha && ./qc.sh
 ```
 
 Expected: All checks pass. The proto change reduces wire size of every `RemoteStateEvent` by ~60-80 bytes.

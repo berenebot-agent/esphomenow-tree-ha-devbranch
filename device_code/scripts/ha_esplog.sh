@@ -8,7 +8,7 @@ set -e
 
 PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEMOS_DIR="${PROJ_DIR}/demos"
-DOCKER_IMG="ghcr.io/esphome/esphome:latest"
+DOCKER_IMG="ghcr.io/esphome/esphome:2026.4.5"
 
 mapfile -t YML_FILES < <(find "${DEMOS_DIR}" -maxdepth 1 -name "*.yml" ! -name "secrets*.yml" | sort)
 

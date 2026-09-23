@@ -18,3 +18,5 @@ ui/node_modules/
 .opencode/
 .agents/
 logs/
+secrets.yaml
+.pytest_cache/

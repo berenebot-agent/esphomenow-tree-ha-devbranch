@@ -676,7 +676,7 @@ follow-up, or rely on the WS API (Phase 8) for OTA transfers.
 
 ## Phase 8: HA Addon Changes
 
-**Files (in `/home/ben/ai-hermes-agent/esphomenow-tree-ha/`):**
+**Files (in `/home/ben/projects/esphomenow-tree-ha/`):**
 - `esphome-esp-tree-ha/app/bridge_ws_ota.py`
 - `esphome-esp-tree-ha/app/ota_worker.py`
 - `esphome-esp-tree-ha/app/ota_chunks.py` (NO CHANGE)

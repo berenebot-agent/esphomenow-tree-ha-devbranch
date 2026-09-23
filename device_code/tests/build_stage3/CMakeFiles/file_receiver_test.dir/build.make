@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/ben/ai-hermes-agent/ESPLR_V2/tests
+CMAKE_SOURCE_DIR = /home/ben/projects/ESPLR_V2/tests
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3
+CMAKE_BINARY_DIR = /home/ben/projects/ESPLR_V2/tests/build_stage3
 
 # Include any dependencies generated for this target.
 include CMakeFiles/file_receiver_test.dir/depend.make
@@ -73,64 +73,64 @@ CMakeFiles/file_receiver_test.dir/codegen:
 .PHONY : CMakeFiles/file_receiver_test.dir/codegen
 
 CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o: CMakeFiles/file_receiver_test.dir/flags.make
-CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o: /home/ben/ai-hermes-agent/ESPLR_V2/tests/file_receiver_test.cpp
+CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o: /home/ben/projects/ESPLR_V2/tests/file_receiver_test.cpp
 CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o: CMakeFiles/file_receiver_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o -MF CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o.d -o CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o -c /home/ben/ai-hermes-agent/ESPLR_V2/tests/file_receiver_test.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o -MF CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o.d -o CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o -c /home/ben/projects/ESPLR_V2/tests/file_receiver_test.cpp
 
 CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/ai-hermes-agent/ESPLR_V2/tests/file_receiver_test.cpp > CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/projects/ESPLR_V2/tests/file_receiver_test.cpp > CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.i
 
 CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/ai-hermes-agent/ESPLR_V2/tests/file_receiver_test.cpp -o CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/projects/ESPLR_V2/tests/file_receiver_test.cpp -o CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.s
 
-CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o: CMakeFiles/file_receiver_test.dir/flags.make
-CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o: /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp
-CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o: CMakeFiles/file_receiver_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o -MF CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o.d -o CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o -c /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp
+CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o: CMakeFiles/file_receiver_test.dir/flags.make
+CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o: /home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp
+CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o: CMakeFiles/file_receiver_test.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o -MF CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o.d -o CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o -c /home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp
 
-CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp > CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
+CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp > CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
 
-CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp -o CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
+CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp -o CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
 
 CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o: CMakeFiles/file_receiver_test.dir/flags.make
-CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o: /home/ben/ai-hermes-agent/ESPLR_V2/tests/mocks/test_time.cpp
+CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o: /home/ben/projects/ESPLR_V2/tests/mocks/test_time.cpp
 CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o: CMakeFiles/file_receiver_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o -MF CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o.d -o CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o -c /home/ben/ai-hermes-agent/ESPLR_V2/tests/mocks/test_time.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o -MF CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o.d -o CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o -c /home/ben/projects/ESPLR_V2/tests/mocks/test_time.cpp
 
 CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/ai-hermes-agent/ESPLR_V2/tests/mocks/test_time.cpp > CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/projects/ESPLR_V2/tests/mocks/test_time.cpp > CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.i
 
 CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/ai-hermes-agent/ESPLR_V2/tests/mocks/test_time.cpp -o CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/projects/ESPLR_V2/tests/mocks/test_time.cpp -o CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.s
 
 # Object files for target file_receiver_test
 file_receiver_test_OBJECTS = \
 "CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o" \
-"CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o" \
+"CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o" \
 "CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o"
 
 # External object files for target file_receiver_test
 file_receiver_test_EXTERNAL_OBJECTS =
 
 file_receiver_test: CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o
-file_receiver_test: CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
+file_receiver_test: CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
 file_receiver_test: CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o
 file_receiver_test: CMakeFiles/file_receiver_test.dir/build.make
 file_receiver_test: CMakeFiles/file_receiver_test.dir/compiler_depend.ts
 file_receiver_test: /usr/lib/x86_64-linux-gnu/libcrypto.so
 file_receiver_test: CMakeFiles/file_receiver_test.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable file_receiver_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable file_receiver_test"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/file_receiver_test.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -142,6 +142,6 @@ CMakeFiles/file_receiver_test.dir/clean:
 .PHONY : CMakeFiles/file_receiver_test.dir/clean
 
 CMakeFiles/file_receiver_test.dir/depend:
-	cd /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3 && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/ben/ai-hermes-agent/ESPLR_V2/tests /home/ben/ai-hermes-agent/ESPLR_V2/tests /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3 /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3 /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/file_receiver_test.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /home/ben/projects/ESPLR_V2/tests/build_stage3 && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/ben/projects/ESPLR_V2/tests /home/ben/projects/ESPLR_V2/tests /home/ben/projects/ESPLR_V2/tests/build_stage3 /home/ben/projects/ESPLR_V2/tests/build_stage3 /home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/file_receiver_test.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/file_receiver_test.dir/depend
 

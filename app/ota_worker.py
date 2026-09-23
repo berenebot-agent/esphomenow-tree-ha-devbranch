@@ -76,6 +76,7 @@ class OTAWorker:
         self.firmware_store = firmware_store
         self.rejoin_timeout_s = rejoin_timeout_s
         self.transfer_timeout_s = transfer_timeout_s
+        self.version_grace_s = 15.0
         self.bridge_manager = bridge_manager
         self._wake_event = asyncio.Event()
         self._stop_event = asyncio.Event()
@@ -487,11 +488,31 @@ class OTAWorker:
                 current_uptime = node.get("uptime_s", 0)
 
                 if initial_uptime_s is None or current_uptime < initial_uptime_s:
+                    expected_version = (job.get("parsed_version") or "").strip()
+                    if not expected_version:
+                        self.db.append_job_event(job_id, "flash_rejoined")
+                        self._finish(job["id"], SUCCESS)
+                        return
+
                     self.db.append_job_event(job_id, "flash_rejoined")
-                    latest_job = self.db.get_job(job_id) or job
-                    expected_version = (latest_job.get("parsed_version") or "").strip()
-                    actual_version = (node.get("firmware_version") or "").strip()
-                    if expected_version and actual_version:
+                    version_deadline = now_ts() + self.version_grace_s
+                    while now_ts() <= version_deadline and not self._stop_event.is_set():
+                        latest = self.db.get_job(job_id)
+                        if not latest or is_terminal(latest["status"]):
+                            return
+                        try:
+                            topology = await self.bridge_manager.topology()
+                        except Exception:
+                            await asyncio.sleep(3.0)
+                            continue
+                        node = find_node_by_mac(topology, target_mac)
+                        if not node or not bool(node.get("online")):
+                            await asyncio.sleep(3.0)
+                            continue
+                        actual_version = (node.get("firmware_version") or "").strip()
+                        if not actual_version:
+                            await asyncio.sleep(3.0)
+                            continue
                         if actual_version == expected_version:
                             self._finish(job["id"], SUCCESS)
                         else:

@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/ben/ai-hermes-agent/ESPLR_V2/tests
+CMAKE_SOURCE_DIR = /home/ben/projects/ESPLR_V2/tests
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3
+CMAKE_BINARY_DIR = /home/ben/projects/ESPLR_V2/tests/build_stage3
 
 # Include any dependencies generated for this target.
 include CMakeFiles/protocol_test.dir/depend.make
@@ -73,48 +73,48 @@ CMakeFiles/protocol_test.dir/codegen:
 .PHONY : CMakeFiles/protocol_test.dir/codegen
 
 CMakeFiles/protocol_test.dir/protocol_test.cpp.o: CMakeFiles/protocol_test.dir/flags.make
-CMakeFiles/protocol_test.dir/protocol_test.cpp.o: /home/ben/ai-hermes-agent/ESPLR_V2/tests/protocol_test.cpp
+CMakeFiles/protocol_test.dir/protocol_test.cpp.o: /home/ben/projects/ESPLR_V2/tests/protocol_test.cpp
 CMakeFiles/protocol_test.dir/protocol_test.cpp.o: CMakeFiles/protocol_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/protocol_test.dir/protocol_test.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/protocol_test.dir/protocol_test.cpp.o -MF CMakeFiles/protocol_test.dir/protocol_test.cpp.o.d -o CMakeFiles/protocol_test.dir/protocol_test.cpp.o -c /home/ben/ai-hermes-agent/ESPLR_V2/tests/protocol_test.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/protocol_test.dir/protocol_test.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/protocol_test.dir/protocol_test.cpp.o -MF CMakeFiles/protocol_test.dir/protocol_test.cpp.o.d -o CMakeFiles/protocol_test.dir/protocol_test.cpp.o -c /home/ben/projects/ESPLR_V2/tests/protocol_test.cpp
 
 CMakeFiles/protocol_test.dir/protocol_test.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/protocol_test.dir/protocol_test.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/ai-hermes-agent/ESPLR_V2/tests/protocol_test.cpp > CMakeFiles/protocol_test.dir/protocol_test.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/projects/ESPLR_V2/tests/protocol_test.cpp > CMakeFiles/protocol_test.dir/protocol_test.cpp.i
 
 CMakeFiles/protocol_test.dir/protocol_test.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/protocol_test.dir/protocol_test.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/ai-hermes-agent/ESPLR_V2/tests/protocol_test.cpp -o CMakeFiles/protocol_test.dir/protocol_test.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/projects/ESPLR_V2/tests/protocol_test.cpp -o CMakeFiles/protocol_test.dir/protocol_test.cpp.s
 
-CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o: CMakeFiles/protocol_test.dir/flags.make
-CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o: /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp
-CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o: CMakeFiles/protocol_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o -MF CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o.d -o CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o -c /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp
+CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o: CMakeFiles/protocol_test.dir/flags.make
+CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o: /home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp
+CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o: CMakeFiles/protocol_test.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o -MF CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o.d -o CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o -c /home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp
 
-CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp > CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
+CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp > CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
 
-CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp -o CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
+CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp -o CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
 
 # Object files for target protocol_test
 protocol_test_OBJECTS = \
 "CMakeFiles/protocol_test.dir/protocol_test.cpp.o" \
-"CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o"
+"CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o"
 
 # External object files for target protocol_test
 protocol_test_EXTERNAL_OBJECTS =
 
 protocol_test: CMakeFiles/protocol_test.dir/protocol_test.cpp.o
-protocol_test: CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
+protocol_test: CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
 protocol_test: CMakeFiles/protocol_test.dir/build.make
 protocol_test: CMakeFiles/protocol_test.dir/compiler_depend.ts
 protocol_test: /usr/lib/x86_64-linux-gnu/libcrypto.so
 protocol_test: CMakeFiles/protocol_test.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable protocol_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable protocol_test"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/protocol_test.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -126,6 +126,6 @@ CMakeFiles/protocol_test.dir/clean:
 .PHONY : CMakeFiles/protocol_test.dir/clean
 
 CMakeFiles/protocol_test.dir/depend:
-	cd /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3 && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/ben/ai-hermes-agent/ESPLR_V2/tests /home/ben/ai-hermes-agent/ESPLR_V2/tests /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3 /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3 /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/protocol_test.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /home/ben/projects/ESPLR_V2/tests/build_stage3 && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/ben/projects/ESPLR_V2/tests /home/ben/projects/ESPLR_V2/tests /home/ben/projects/ESPLR_V2/tests/build_stage3 /home/ben/projects/ESPLR_V2/tests/build_stage3 /home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/protocol_test.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/protocol_test.dir/depend
 

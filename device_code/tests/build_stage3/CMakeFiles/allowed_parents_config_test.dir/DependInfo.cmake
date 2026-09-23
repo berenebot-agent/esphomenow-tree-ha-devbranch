@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/allowed_parents_config_test.cpp" "CMakeFiles/allowed_parents_config_test.dir/allowed_parents_config_test.cpp.o" "gcc" "CMakeFiles/allowed_parents_config_test.dir/allowed_parents_config_test.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/tests/allowed_parents_config_test.cpp" "CMakeFiles/allowed_parents_config_test.dir/allowed_parents_config_test.cpp.o" "gcc" "CMakeFiles/allowed_parents_config_test.dir/allowed_parents_config_test.cpp.o.d"
   "" "allowed_parents_config_test" "gcc" "CMakeFiles/allowed_parents_config_test.dir/link.d"
   )
 

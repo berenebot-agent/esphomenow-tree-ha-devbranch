@@ -3,7 +3,7 @@ file_receiver_test: \
   /usr/lib/gcc/x86_64-linux-gnu/14/../../../x86_64-linux-gnu/crti.o \
   /usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o \
   CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o \
-  CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o \
+  CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o \
   CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o \
   /usr/lib/x86_64-linux-gnu/libcrypto.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so \
@@ -45,7 +45,7 @@ file_receiver_test: \
 
 CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o:
 
-CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o:
+CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o:
 
 CMakeFiles/file_receiver_test.dir/mocks/test_time.cpp.o:
 

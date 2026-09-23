@@ -28,7 +28,7 @@ events:
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
       
       The CXX compiler identification is GNU, found in:
-        /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/3.31.6/CompilerIdCXX/a.out
+        /home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/3.31.6/CompilerIdCXX/a.out
       
   -
     kind: "try_compile-v1"
@@ -39,8 +39,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI"
-      binary: "/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI"
+      source: "/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI"
+      binary: "/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI"
     cmakeVariables:
       CMAKE_CXX_FLAGS: ""
       CMAKE_CXX_FLAGS_DEBUG: "-g"
@@ -50,11 +50,11 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: '/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI'
+        Change Dir: '/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI'
         
         Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_efc32/fast
         /usr/bin/gmake  -f CMakeFiles/cmTC_efc32.dir/build.make CMakeFiles/cmTC_efc32.dir/build
-        gmake[1]: Entering directory '/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI'
+        gmake[1]: Entering directory '/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI'
         Building CXX object CMakeFiles/cmTC_efc32.dir/CMakeCXXCompilerABI.cpp.o
         /usr/bin/c++   -v -o CMakeFiles/cmTC_efc32.dir/CMakeCXXCompilerABI.cpp.o -c /usr/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp
         Using built-in specs.
@@ -116,7 +116,7 @@ events:
         GNU ld (GNU Binutils for Debian) 2.44
         COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_efc32' '-foffload-options=-l_GCC_m' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_efc32.'
         /usr/bin/c++  -v -Wl,-v CMakeFiles/cmTC_efc32.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_efc32
-        gmake[1]: Leaving directory '/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI'
+        gmake[1]: Leaving directory '/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI'
         
       exitCode: 0
   -
@@ -157,11 +157,11 @@ events:
       Parsed CXX implicit link information:
         link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
         linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(\\.[a-z]+)?))("|,| |$)]
-        ignore line: [Change Dir: '/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI']
+        ignore line: [Change Dir: '/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI']
         ignore line: []
         ignore line: [Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_efc32/fast]
         ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_efc32.dir/build.make CMakeFiles/cmTC_efc32.dir/build]
-        ignore line: [gmake[1]: Entering directory '/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI']
+        ignore line: [gmake[1]: Entering directory '/home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles/CMakeScratch/TryCompile-MEGfdI']
         ignore line: [Building CXX object CMakeFiles/cmTC_efc32.dir/CMakeCXXCompilerABI.cpp.o]
         ignore line: [/usr/bin/c++   -v -o CMakeFiles/cmTC_efc32.dir/CMakeCXXCompilerABI.cpp.o -c /usr/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp]
         ignore line: [Using built-in specs.]

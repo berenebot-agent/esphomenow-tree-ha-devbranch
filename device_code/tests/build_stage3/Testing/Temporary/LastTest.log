@@ -2,8 +2,8 @@ Start testing: Apr 29 21:24 AWST
 ----------------------------------------------------------
 24/24 Testing: file_receiver_test
 24/24 Test: file_receiver_test
-Command: "/home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/file_receiver_test"
-Directory: /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3
+Command: "/home/ben/projects/ESPLR_V2/tests/build_stage3/file_receiver_test"
+Directory: /home/ben/projects/ESPLR_V2/tests/build_stage3
 "file_receiver_test" start time: Apr 29 21:24 AWST
 Output:
 ----------------------------------------------------------

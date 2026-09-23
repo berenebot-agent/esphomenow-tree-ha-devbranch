@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Correction:** Native compilation is now implemented. The add-on bootstraps a local ESPHome venv (via `requirements-compile.txt`) and exposes `POST /api/devices/{mac}/compile`. The 0.1.38 note about "Native compilation not yet implemented" is obsolete — the compile button and compile queue are functional.
+- Note: Versions 0.1.39 through 0.1.272 (add-on) and 0.2.0 through 0.2.216 (integration) were not individually documented.
 
 ## 0.1.38
 

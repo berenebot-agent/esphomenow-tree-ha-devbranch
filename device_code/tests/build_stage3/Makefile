@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/ben/ai-hermes-agent/ESPLR_V2/tests
+CMAKE_SOURCE_DIR = /home/ben/projects/ESPLR_V2/tests
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3
+CMAKE_BINARY_DIR = /home/ben/projects/ESPLR_V2/tests/build_stage3
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -97,9 +97,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles /home/ben/projects/ESPLR_V2/tests/build_stage3//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ben/ai-hermes-agent/ESPLR_V2/tests/build_stage3/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/ben/projects/ESPLR_V2/tests/build_stage3/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -774,56 +774,56 @@ heartbeat_parent_mac_test.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/heartbeat_parent_mac_test.dir/build.make CMakeFiles/heartbeat_parent_mac_test.dir/heartbeat_parent_mac_test.cpp.s
 .PHONY : heartbeat_parent_mac_test.cpp.s
 
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.o: home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.o
+home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.o: home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.o
 
 # target to build an object file
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/protocol_test.dir/build.make CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/encryption_test.dir/build.make CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
+home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/protocol_test.dir/build.make CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/encryption_test.dir/build.make CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o
 
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.i: home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.i
+home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.i: home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.i
 
 # target to preprocess a source file
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/protocol_test.dir/build.make CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/encryption_test.dir/build.make CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
+home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/protocol_test.dir/build.make CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/encryption_test.dir/build.make CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.i
 
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.s: home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.s
+home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.s: home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.s
 
 # target to generate assembly for a file
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/protocol_test.dir/build.make CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/encryption_test.dir/build.make CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
+home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/protocol_test.dir/build.make CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/encryption_test.dir/build.make CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.s
 
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.o: home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.o
+home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.o: home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.o
 
 # target to build an object file
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/file_receiver_test.dir/build.make CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
+home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/file_receiver_test.dir/build.make CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.o
 
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.i: home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.i
+home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.i: home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.i
 
 # target to preprocess a source file
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/file_receiver_test.dir/build.make CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
+home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/file_receiver_test.dir/build.make CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.i
 
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.s: home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.s
+home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.s: home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.s
 
 # target to generate assembly for a file
-home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/file_receiver_test.dir/build.make CMakeFiles/file_receiver_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
-.PHONY : home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
+home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/file_receiver_test.dir/build.make CMakeFiles/file_receiver_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
+.PHONY : home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.cpp.s
 
 hop_encoding_test.o: hop_encoding_test.cpp.o
 .PHONY : hop_encoding_test.o
@@ -1164,12 +1164,12 @@ help:
 	@echo "... heartbeat_parent_mac_test.o"
 	@echo "... heartbeat_parent_mac_test.i"
 	@echo "... heartbeat_parent_mac_test.s"
-	@echo "... home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.o"
-	@echo "... home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.i"
-	@echo "... home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.s"
-	@echo "... home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.o"
-	@echo "... home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.i"
-	@echo "... home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.s"
+	@echo "... home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.o"
+	@echo "... home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.i"
+	@echo "... home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.s"
+	@echo "... home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.o"
+	@echo "... home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.i"
+	@echo "... home/ben/projects/ESPLR_V2/components/espnow_lr_remote/remote_file_receiver.s"
 	@echo "... hop_encoding_test.o"
 	@echo "... hop_encoding_test.i"
 	@echo "... hop_encoding_test.s"

@@ -116,10 +116,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def _cleanup_restart_marker() -> None:
         if hass.is_running:
-            _LOGGER.error("RESTART_CLEANUP: hass is running, skipping cleanup")
+            _LOGGER.debug("RESTART_CLEANUP: hass is running, skipping cleanup")
             return
         if not hub_entries:
-            _LOGGER.error("RESTART_CLEANUP: no hub entries, skipping cleanup")
+            _LOGGER.debug("RESTART_CLEANUP: no hub entries, skipping cleanup")
             return
         marker_path = Path(__file__).resolve().parent / ".restart_required.json"
         if marker_path.exists():
@@ -128,15 +128,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             except Exception:
                 created_at = 0
             if created_at > _MODULE_IMPORTED_AT:
-                _LOGGER.error("RESTART_CLEANUP: marker is fresh (created_at=%s > MODULE_IMPORTED_AT=%s), keeping", created_at, _MODULE_IMPORTED_AT)
+                _LOGGER.debug("RESTART_CLEANUP: marker is fresh (created_at=%s > MODULE_IMPORTED_AT=%s), keeping", created_at, _MODULE_IMPORTED_AT)
                 return
-            _LOGGER.error("RESTART_CLEANUP: marker is stale, DELETING at %s", marker_path)
+            _LOGGER.debug("RESTART_CLEANUP: marker is stale, DELETING at %s", marker_path)
             try:
                 marker_path.unlink()
             except OSError:
                 pass
         else:
-            _LOGGER.error("RESTART_CLEANUP: no marker found at %s", marker_path)
+            _LOGGER.debug("RESTART_CLEANUP: no marker found at %s", marker_path)
 
     hass.async_create_task(_dismiss_restart_notification())
     await _cleanup_restart_marker()

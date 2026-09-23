@@ -1,8 +1,8 @@
 CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o: \
- /home/ben/ai-hermes-agent/ESPLR_V2/tests/file_receiver_test.cpp \
+ /home/ben/projects/ESPLR_V2/tests/file_receiver_test.cpp \
  /usr/include/stdc-predef.h \
- /home/ben/ai-hermes-agent/ESPLR_V2/tests/../components/espnow_lr_remote/remote_file_receiver.h \
- /home/ben/ai-hermes-agent/ESPLR_V2/tests/../components/espnow_lr_common/espnow_types.h \
+ /home/ben/projects/ESPLR_V2/tests/../components/espnow_lr_remote/remote_file_receiver.h \
+ /home/ben/projects/ESPLR_V2/tests/../components/espnow_lr_common/espnow_types.h \
  /usr/lib/gcc/x86_64-linux-gnu/14/include/stdint.h /usr/include/stdint.h \
  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
  /usr/include/features.h /usr/include/features-time64.h \
@@ -145,7 +145,7 @@ CMakeFiles/file_receiver_test.dir/file_receiver_test.cpp.o: \
  /usr/include/x86_64-linux-gnu/openssl/opensslconf.h \
  /usr/include/x86_64-linux-gnu/openssl/configuration.h \
  /usr/include/openssl/opensslv.h /usr/include/openssl/e_os2.h \
- /home/ben/ai-hermes-agent/ESPLR_V2/tests/mocks/test_time.h \
+ /home/ben/projects/ESPLR_V2/tests/mocks/test_time.h \
  /usr/include/c++/14/iostream /usr/include/c++/14/ostream \
  /usr/include/c++/14/ios /usr/include/c++/14/exception \
  /usr/include/c++/14/bits/exception_ptr.h \

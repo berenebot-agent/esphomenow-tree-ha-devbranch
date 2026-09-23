@@ -1,6 +1,7 @@
 """Tests for ESP Tree repair flows."""
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,27 +22,79 @@ async def test_create_restart_required_fix_flow():
 
 
 @pytest.mark.asyncio
-async def test_restart_repair_submit_schedules_restart(monkeypatch):
+async def test_restart_repair_submit_awaits_restart_inline(monkeypatch):
     flow = repairs_mod.RestartRequiredFlow()
     flow.hass = MagicMock()
     flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
-    scheduled = []
+    flow.async_show_form = MagicMock(return_value={"type": "form"})
+    flow.hass.async_create_task = MagicMock()
+
+    called = {"awaited": False}
+
+    async def fake_restart():
+        called["awaited"] = True
+
+    monkeypatch.setattr(flow, "_do_restart", fake_restart)
+
+    await flow.async_step_confirm_restart({})
+
+    assert called["awaited"] is True
+    flow.hass.async_create_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_restart_repair_does_not_fire_and_forget(monkeypatch):
+    flow = repairs_mod.RestartRequiredFlow()
+    flow.hass = MagicMock()
+    flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+    flow.async_show_form = MagicMock(return_value={"type": "form"})
+    flow.hass.async_create_task = MagicMock()
 
     async def fake_restart():
         return None
 
-    def capture_task(coro):
-        scheduled.append(coro)
-        return MagicMock()
+    monkeypatch.setattr(flow, "_do_restart", fake_restart)
+
+    await flow.async_step_confirm_restart({})
+
+    flow.hass.async_create_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_restart_repair_submit_fails_when_restart_fails(monkeypatch):
+    flow = repairs_mod.RestartRequiredFlow()
+    flow.hass = MagicMock()
+    flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+    flow.async_show_form = MagicMock(return_value={"type": "form"})
+
+    async def fake_restart():
+        return None
 
     monkeypatch.setattr(flow, "_do_restart", fake_restart)
-    flow.hass.async_create_task.side_effect = capture_task
 
     result = await flow.async_step_confirm_restart({})
 
-    assert result == {"type": "create_entry"}
-    assert len(scheduled) == 1
-    scheduled[0].close()
+    assert result == {"type": "form"}
+    flow.async_show_form.assert_called_once()
+    flow.async_create_entry.assert_not_called()
+    call_kwargs = flow.async_show_form.call_args
+    assert call_kwargs.kwargs.get("errors") == {"base": "restart_failed"}
+
+
+@pytest.mark.asyncio
+async def test_restart_repair_submit_succeeds_when_restart_succeeds(monkeypatch):
+    flow = repairs_mod.RestartRequiredFlow()
+    flow.hass = MagicMock()
+    flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+    flow.async_show_form = MagicMock(return_value={"type": "form"})
+
+    async def fake_restart():
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(flow, "_do_restart", fake_restart)
+
+    with pytest.raises(asyncio.CancelledError):
+        await flow.async_step_confirm_restart({})
 
 
 @pytest.mark.asyncio

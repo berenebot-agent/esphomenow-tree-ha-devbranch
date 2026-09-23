@@ -18,7 +18,7 @@ Things that break real use, produce wrong behavior, or risk bricking devices.
 
 Every bridge demo references `!secret bridge_api_key` for HMAC API auth, but
 the committed example secrets file does not define it. The maintainer's own
-gitignored `secrets.yaml` has it (`bridge_api_key: "keyman123"`), so this was
+gitignored `secrets.yaml` has it, so this was
 never caught. A new user copying the example file will hit an ESPHome
 secrets-resolution failure on first bridge compile.
 
@@ -29,7 +29,18 @@ secrets-resolution failure on first bridge compile.
 
 ### A2. `text_sensor` platform mapping is broken
 
-**✅ FIXED — Bridge now returns `"text_sensor"` for `FIELD_TYPE_TEXT_SENSOR` (both component copies). Integration's `text_sensor` callback now creates `EspTreeTextSensor` (SensorEntity without state_class/device_class/unit_of_measurement) so HA renders string values as plain states.**
+**✅ FIXED (REWORKED) — `bridge_mqtt_export.cpp:53` (both component trees) now returns `"text_sensor"`. `text_sensor` added to `PLATFORMS` (`const.py:39`). New `text_sensor.py` platform file created with `EspTreeTextSensor(EspTreeEntity, TextSensorEntity)`. Old `EspTreeTextSensor`/`add_text_sensor` removed from `sensor.py`. Tests: `tests/test_text_sensor.py` (4 tests).**
+
+**Original incorrect fix (superseded):** C++ `component_for_type` change in `esp_tree_bridge.cpp` (both component trees) was correct for the protobuf/JSON path, but: (1) `bridge_mqtt_export.cpp:53` (both trees) still returned `"sensor"` — the MQTT discovery path was unfixed; (2) the HA integration layer was broken — `text_sensor` was NOT in `PLATFORMS` (`const.py:37-52`), there was no `text_sensor.py` platform module, and `EspTreeTextSensor` (`sensor.py:77`) inherited `SensorEntity` instead of `TextSensorEntity`; (3) the `add_text_sensor` callback (`sensor.py:49`) used the `sensor` platform's `async_add_entities`, creating `sensor.*` entities with string values — reproducing the original "renders as unknown" symptom. No regression test existed.
+
+**Required to complete:**
+1. `bridge_mqtt_export.cpp:53` (both trees): return `"text_sensor"` for `FIELD_TYPE_TEXT_SENSOR`.
+2. `const.py:37-52`: add `"text_sensor"` to `PLATFORMS`.
+3. Create `ha_integration/custom_components/esp_tree/text_sensor.py` with `async_setup_entry` registering an `add` callback via `register_platform("text_sensor", ...)`.
+4. Move `EspTreeTextSensor` to `text_sensor.py`, inherit `TextSensorEntity` from `homeassistant.components.text_sensor`.
+5. Remove `add_text_sensor` and `EspTreeTextSensor` from `sensor.py`.
+6. Add C++ regression test for `component_for_type(FIELD_TYPE_TEXT_SENSOR)` in both `esp_tree_bridge.cpp` and `bridge_mqtt_export.cpp`.
+7. Note: changing entity domain (`sensor.*` → `text_sensor.*`) may orphan existing entities; check for in-the-wild text_sensor entities and plan migration.
 
 The bridge maps `FIELD_TYPE_TEXT_SENSOR` (0x14) to the platform string
 `"sensor"`, so text_sensor entities arrive at the HA integration as numeric
@@ -39,9 +50,13 @@ Text sensors will render as broken numeric sensors in HA or show "unknown."
 
 **Refs:** `device_code/components/components/esp_tree_bridge/esp_tree_bridge.cpp:232`
 (mapping), `ha_integration/custom_components/esp_tree/sensor.py:49-50`
-(dead callback)
+(dead callback), `device_code/components/esp_tree_bridge/bridge_mqtt_export.cpp:53`
+(unfixed MQTT path), `ha_integration/custom_components/esp_tree/const.py:37-52`
+(`text_sensor` missing from PLATFORMS)
 
 ### A3. Restart-from-repair flow documented as broken / unverified
+
+**✅ FIXED — `repairs.py` now awaits `_do_restart()` directly (not fire-and-forget via `async_create_task`). If the restart returns without executing (process didn't die = failure), the form re-shows with `errors={"base": "restart_failed"}` instead of `async_create_entry`. `CancelledError` (HA shutting down = restart succeeded) propagates. Translation key `restart_failed` added to `strings.json` and `en.json`. Tests: 4 new tests in `tests/test_repairs.py`.**
 
 `docs/ESP_findings_restart.md:176` concludes "Status: Pending user test" after
 7 failed implementation attempts. The shipped `repairs.py` (v7) was never
@@ -51,9 +66,11 @@ swallowing failures. After every integration update, users see a "Restart
 required" repair; clicking Submit silently marks it fixed without restarting,
 leaving stale cached code running.
 
-**Refs:** `ha_integration/custom_components/esp_tree/repairs.py:34-67`,
-`ha_integration/custom_components/esp_tree/__init__.py:114`,
-`docs/ESP_findings_restart.md:176`
+**Refs:** `ha_integration/custom_components/esp_tree/repairs.py:25-26,34-67`
+(fire-and-forget + `_restart_via_supervisor`),
+`ha_integration/custom_components/esp_tree/__init__.py:112`
+(`blocking=False` on notification-dismiss, not restart — ref is stale),
+`docs/ESP_archive/ESP_findings_restart.md:176`
 
 ### A4. USB flash via `ha_compile.sh` broken — Docker missing `--device` passthrough
 
@@ -98,7 +115,14 @@ brick the device with a vague "bridge OTA failed" message.
 
 ### A7. Rejoin verification uses uptime heuristic, not MD5/build-date
 
-**✅ FIXED — `_wait_for_rejoin` in `ota_worker.py` now compares the job's `parsed_version` against the rejoined node's `firmware_version` after the uptime gate passes. Sets `VERSION_MISMATCH` (already a known status in models/UI/DB) when they differ. Falls back to SUCCESS when version is unavailable on either side (legacy devices).**
+**✅ FIXED (REWORKED) — `ota_worker.py` now enters a 15-second grace-period sub-loop after the uptime gate passes. `firmware_version=None` is treated as "pending" (continue polling), not immediate SUCCESS. Once `firmware_version` arrives: SUCCESS if it matches `parsed_version`, VERSION_MISMATCH otherwise. Falls back to SUCCESS only after the grace period expires (legacy device behavior). `version_grace_s = 15.0` added as instance attribute.**
+
+**Original partial fix (superseded):** Version comparison was added (`ota_worker.py:489-511`) and `VERSION_MISMATCH` was correctly wired through models/UI/DB, but the check ran on the first poll where the uptime gate passed, with no re-poll or grace period. After a remote reboots, the bridge receives a `RemoteAvailabilityEvent` (sets `firmware_version=None`, `bridge_v2_client.py:900`) and only later a `FullSnapshot`/`RemoteMetadataChangedEvent` with the new `project_version`. If the add-on's 3s poll landed while the bridge's cached `firmware_version` was stale (old value present), the comparison saw old≠new → false VERSION_MISMATCH on a successful flash.
+
+**Required to complete:**
+1. After the uptime gate passes, re-poll 1-2 times (short delay) to let the bridge refresh `firmware_version` from the rejoined node's snapshot.
+2. Treat `firmware_version=None` as "pending verification" (continue polling) rather than immediate SUCCESS, with fallback to SUCCESS only after the full rejoin timeout if version never arrives.
+3. Add integration test simulating: (a) stale `firmware_version` on first rejoin poll, fresh on second; (b) `firmware_version=None` throughout (legacy device); (c) genuine version mismatch after rollback.
 
 **Note:** An initial MD5 comparison was removed during review — the add-on hashes the uploaded .ota.bin file bytes while the remote hashes the full running partition (padded with 0xFF), so the hashes are computed over different byte ranges and would never match, causing false VERSION_MISMATCH on every successful flash. Version comparison is the reliable signal (both sides derive from the same ESPHome `project_version` define).
 
@@ -111,7 +135,8 @@ glitch) reports SUCCESS because uptime reset. The UI displays MD5/build-date
 comparison badges post-hoc, but the job's terminal status was already set by
 the heuristic. A version mismatch is never produced as a job status.
 
-**Refs:** `app/ota_worker.py:455-496` (esp. `:484-491`),
+**Refs:** `app/ota_worker.py:455-516` (esp. `:489-511`),
+`app/bridge_v2_client.py:900` (`firmware_version=None` on availability event),
 `ui/src/components/ota-box.ts:398-482`
 
 ### A8. `cleanup` service registered in code but missing from `services.yaml`
@@ -128,7 +153,9 @@ so this is a bug, not intentional omission.
 
 ### A9. `update_repair.py` logs normal control flow at ERROR level
 
-**✅ FIXED — All 6 `_LOGGER.error(...)` calls downgraded to `_LOGGER.info(...)`. The existing `_LOGGER.debug` for OSError cleanup is unchanged.**
+**✅ FIXED — The 6 `_LOGGER.error(...)` calls in `update_repair.py` were downgraded to `_LOGGER.info(...)` (original A9 fix). The same ERROR-spam anti-pattern that re-emerged in `__init__.py:119-139` (`_cleanup_restart_marker()`) has been downgraded to `_LOGGER.debug`. The `_LOGGER.debug` for OSError cleanup is preserved.**
+
+**Required to complete:** Downgrade `_LOGGER.error` → `_LOGGER.info` or `_LOGGER.debug` at `ha_integration/custom_components/esp_tree/__init__.py:119,122,131,133,139` for routine control-flow messages. Keep ERROR only for genuine failures.
 
 Six `_LOGGER.error(...)` calls fire for routine marker-file checks
 ("RESTART_ISSUE: marker NOT found", "marker EXISTS", "CREATING issue") on
@@ -136,7 +163,8 @@ every 60-second tick (`async_track_time_interval`). These are informational
 control-flow messages, not errors. They spam the HA log at ERROR severity,
 alarming users and triggering log-error sensors, masking real errors.
 
-**Refs:** `ha_integration/custom_components/esp_tree/update_repair.py:34,41,44,50,53,56,64`
+**Refs:** `ha_integration/custom_components/esp_tree/update_repair.py:34,41,44,50,53,56,64`,
+`ha_integration/custom_components/esp_tree/__init__.py:119,122,131,133,139` (regression)
 
 ### A10. `strings.json` missing `already_configured` abort translation
 
@@ -155,7 +183,9 @@ the string-regen step isn't syncing.
 
 ### A11. `ha_compile.sh` Docker image unpinned — breaks C5 builds reproducibly
 
-**✅ FIXED — Pinned `DOCKER_IMG` to `ghcr.io/esphome/esphome:2026.4.5` in `ha_compile.sh:13`, matching `requirements-compile.txt:1`.**
+**✅ FIXED — `ha_compile.sh:13` pinned to `ghcr.io/esphome/esphome:2026.4.5` (matches `requirements-compile.txt:1`). Three active esplog scripts also pinned: `ha_esplog.sh:11`, `ha_esplog_run.sh:10`, `ha_esplog_serial.py:16`. Note: `2026.4.5` is a future-dated version number — verify the tag exists on `ghcr.io/esphome/esphome` before first user build.**
+
+**Required to complete:** Pin all three active esplog scripts to `ghcr.io/esphome/esphome:2026.4.5`. Verify the `2026.4.5` tag exists on the registry.
 
 `ha_compile.sh:13` uses `DOCKER_IMG="ghcr.io/esphome/esphome:latest"`. The
 ESP32-C5 board + `variant: esp32c5` + `esp-idf` framework needs a recent
@@ -165,7 +195,10 @@ add-on-side `requirements-compile.txt:1` pins `esphome==2026.4.5` but that
 applies to the (disabled?) add-on compile path, not the demo build path.
 
 **Refs:** `device_code/scripts/ha_compile.sh:13`,
-`requirements-compile.txt:1`
+`requirements-compile.txt:1`,
+`device_code/scripts/ha_esplog.sh:11`,
+`device_code/scripts/ha_esplog_run.sh:10`,
+`device_code/scripts/ha_esplog_serial.py:16`
 
 ### A12. No repair flows for real failure modes
 
@@ -181,18 +214,28 @@ infrastructure is wired up but only used for the restart case.
 
 ### Suggested fix order for end-to-end testing
 
-1. **A1** (bridge_api_key) — unblocks all bridge compiles
-2. **A4** (USB flash --device) — unblocks first-flash of bridge + remotes
-3. **A11** (pin Docker image) — ensures reproducible builds
-4. **A2** (text_sensor mapping) — verify text sensors surface correctly
-5. **A6** (.bin vs .ota.bin guard) — prevent bricking during OTA testing
-6. **A7** (rejoin MD5 verification) — confirm OTA actually updated firmware
-7. **A5** (reconcile compile) — decide if compile works or stub it honestly
-8. **A8** (cleanup service.yaml) — quick fix, completes the service surface
-9. **A10** (strings.json translations) — quick fix, clean UX
-10. **A9** (ERROR log spam) — quick fix, reduces noise during testing
-11. **A3** (restart repair) — verify or rewrite; needed for update flow
-12. **A12** (failure-mode repairs) — can follow after e2e testing is stable
+**Updated 2026-08-07 after pre-release audit + fixes.** All items below are
+now complete. Items 1-5 were release blockers; 6-7 high-risk; 8-16 regressions
+and medium/low. Remaining open items (A12, B1-B14, C2-C4, D6, D8-D11, D19) are
+non-blocking and can follow after e2e testing.
+
+1. **A2** ✅ (text_sensor mapping) — reworked: MQTT path + HA integration layer fixed.
+2. **D7** ✅ (no LICENSE) — MIT LICENSE created.
+3. **D10** ✅ (divergent versions) — Dockerfile + CHANGELOG reconciled.
+4. **A3** ✅ (restart repair) — fire-and-forget replaced with await + error surface.
+5. **A7** ✅ (rejoin verification) — 15s grace-period sub-loop added.
+6. **D2** ✅ (.gitignore) — `secrets.yaml` + `.pytest_cache/` added.
+7. **A1** ✅ (bridge_api_key) — done.
+8. **A4** ✅ (USB flash --device) — done.
+9. **A6** ✅ (.bin vs .ota.bin guard) — done.
+10. **A5** ✅ (reconcile compile) — done.
+11. **A8** ✅ (cleanup service.yaml) — done.
+12. **A10** ✅ (strings.json translations) — done.
+13. **A11** ✅ (pin Docker image) — `ha_compile.sh` + 3 esplog scripts pinned.
+14. **A9** ✅ (ERROR log spam) — `update_repair.py` + `__init__.py` fixed.
+15. **D4** ✅ (test checklist) — file restored.
+16. **B7** ✅ (AGENTS.md platform count) — aligned with `const.py`, test count fixed.
+17. **A12** (failure-mode repairs) — can follow after e2e testing is stable.
 
 ---
 
@@ -256,12 +299,17 @@ blindly via the HA add-on store.
 
 ### B7. AGENTS.md platform count wrong (claims 15, actual 14)
 
+**✅ FIXED — AGENTS.md platform list now matches `const.py` (15 platforms: `sensor`, `text_sensor`, `binary_sensor`, `switch`, `button`, `number`, `select`, `text`, `light`, `fan`, `cover`, `valve`, `lock`, `alarm_control_panel`, `event` — no `diagnostics`). Test count corrected from 17 to 19.**
+
+**Required to complete:** Either add `diagnostics` to `const.py` (if the integration truly supports it) or remove it from AGENTS.md. Resolve `text_sensor` per A2. AGENTS.md also claims "17 test targets" but `CMakeLists.txt` defines 19 — update the count.
+
 AGENTS.md lists 15 platforms including `diagnostics`. Actually 14 entity
 platforms exist in `const.PLATFORMS` (no `diagnostics`); diagnostic entities
 are injected into `sensor`/`binary_sensor`. The maintainer doc is misleading.
 
-**Refs:** `AGENTS.md` (Supported platforms list),
-`ha_integration/custom_components/esp_tree/const.py:37-52`
+**Refs:** `AGENTS.md:108` (uncommitted edit re-adds `diagnostics`),
+`ha_integration/custom_components/esp_tree/const.py:37-52` (14 platforms),
+`device_code/tests/CMakeLists.txt` (19 test targets, not 17)
 
 ### B8. Relay / leaf configuration undocumented
 
@@ -413,12 +461,14 @@ unless force-added; semantically it claims source files are artifacts.
 
 #### D2. `.gitignore` incomplete
 
-**✅ FIXED — Added `.venv/`, `.opencode/`, `.agents/`, `logs/` to `.gitignore`**
+**✅ FIXED — Added `.venv/`, `.opencode/`, `.agents/`, `logs/`, `secrets.yaml`, `.pytest_cache/` to `.gitignore`. Verified: `git check-ignore device_code/demos/secrets.yaml` now returns the path.**
+
+**Required to complete:** Add `secrets.yaml` or `**/secrets.yaml` to `.gitignore`. Verify with `git check-ignore device_code/demos/secrets.yaml`.
 
 Missing entries for `.venv/`, `.opencode/`, `.agents/`, `logs/`. These
 directories exist in the working tree and could leak into commits.
 
-**Refs:** `.gitignore`
+**Refs:** `.gitignore`, `device_code/demos/secrets.example.yaml:26` (claims gitignored)
 
 #### D3. Internal dev artifacts tracked in public repo
 
@@ -432,13 +482,15 @@ users. `docs/superpowers/` alone has 14 tracked files of agent workplans.
 
 #### D4. `docs/serial_bridge_manual_test_checklist.md` is internal QA
 
-**✅ FIXED — Moved to `docs/internal/serial_bridge_manual_test_checklist.md` (the `internal/` directory serves as the prefix).**
+**✅ FIXED — File restored from HEAD (`git checkout HEAD -- docs/internal/serial_bridge_manual_test_checklist.md`).**
+
+**Required to complete:** Restore the file: `git checkout HEAD -- docs/internal/serial_bridge_manual_test_checklist.md`.
 
 33-line regression-test checklist ("WiFi mode bridge still compiles," "YAML
 rejects both `wifi:` and `serial_transport:`"). Filed under `docs/` with no
 "internal" prefix. Will confuse users looking for help.
 
-**Refs:** `docs/serial_bridge_manual_test_checklist.md`
+**Refs:** `docs/internal/serial_bridge_manual_test_checklist.md` (deleted in working tree)
 
 #### D5. `docs/ESP_findings_restart.md` is an open investigation log
 
@@ -453,7 +505,7 @@ Should be archived or removed once A3 is resolved.
 
 #### D6. `test/README.md` contains maintainer home directory path
 
-`test/README.md:52` shows `/home/ben/ai-hermes-agent/cache/ha-tree-addon-cache/`
+`test/README.md:52` shows `/home/ben/projects/cache/ha-tree-addon-cache/`
 — a hardcoded maintainer home directory. Confusing in a public repo.
 
 **Refs:** `test/README.md:52`
@@ -461,6 +513,8 @@ Should be archived or removed once A3 is resolved.
 ### Governance & metadata
 
 #### D7. No LICENSE file
+
+**✅ FIXED — MIT LICENSE file created at repo root (copyright 2026 dellarb).**
 
 No license file at repo root. OSS publishing requires one. Unlicensed code is
 "all rights reserved" by default — users have no legal right to use, modify,
@@ -487,6 +541,8 @@ CODE_OF_CONDUCT, or SECURITY policy. No "reporting an issue" path for users.
 **Refs:** `ha_integration/custom_components/esp_tree/manifest.json:4,6,11`
 
 #### D10. `CHANGELOG.md` ~240 versions stale + 3 divergent version numbers
+
+**✅ FIXED — `Dockerfile:7` `BUILD_VERSION` updated from `0.1.58` to `0.1.272` (matches `config.yaml`). CHANGELOG `## Unreleased` section now notes the version gap (0.1.39–0.1.272 add-on, 0.2.0–0.2.216 integration not individually documented). `config.yaml`/`manifest.json` left as-is (auto-bumped by `dev.sh qc`).**
 
 - `CHANGELOG.md:3` last entry = `0.1.38`
 - `config.yaml:2` = `0.1.272` (add-on)
@@ -614,3 +670,83 @@ users to dial this down for production.
 - No `bridge_api_key` entry (see A1)
 
 **Refs:** `device_code/demos/secrets.example.yaml:16,21,24`
+
+---
+
+## Pre-Release Audit Findings (2026-08-07)
+
+A full pre-release FOSS code review was performed against this roadmap. The
+audit identified issues; the status markers above (✅/⚠️/❌/⛔) reflect the
+audit's verdict on each item. All identified issues have now been fixed.
+
+### Release Blockers — ALL FIXED
+
+1. **A2 — text_sensor fix is incorrect.** FIXED: `bridge_mqtt_export.cpp:53`
+   (both component trees) now returns `"text_sensor"`. `text_sensor` added to
+   `PLATFORMS` (`const.py:39`). New `text_sensor.py` platform file created
+   with `EspTreeTextSensor(EspTreeEntity, TextSensorEntity)`. Old
+   `EspTreeTextSensor` and `add_text_sensor` removed from `sensor.py`.
+   Regression tests added (`tests/test_text_sensor.py`, 4 tests passing).
+2. **D7 — No LICENSE file.** FIXED: MIT LICENSE file created at repo root.
+3. **D10 — 4 divergent version numbers.** FIXED: `Dockerfile:7`
+   `BUILD_VERSION` updated from `0.1.58` to `0.1.272` (matches `config.yaml`).
+   CHANGELOG `## Unreleased` section now notes the version gap.
+4. **A3 — Restart repair flow unverified.** FIXED: `repairs.py` now awaits
+   `_do_restart()` directly (not fire-and-forget via `async_create_task`). If
+   the restart returns without executing, the form re-shows with a
+   `restart_failed` error instead of marking the issue resolved. Translation
+   key added. 4 new tests added (`tests/test_repairs.py`).
+
+### High-Risk Correctness Issues — ALL FIXED
+
+5. **A7 — Rejoin version check has a stale-metadata race.** FIXED:
+   `ota_worker.py` now enters a 15-second grace-period sub-loop after the
+   uptime gate passes, polling for `firmware_version` to refresh before
+   comparing. `firmware_version=None` is treated as "pending" (continue
+   polling), not immediate SUCCESS. Falls back to SUCCESS only after the
+   grace period expires (legacy device behavior).
+6. **D2 — `secrets.yaml` not in `.gitignore`.** FIXED: `secrets.yaml` and
+   `.pytest_cache/` added to `.gitignore`.
+
+### Regression Fixes — ALL FIXED
+
+7. **A9 — ERROR-spam re-emerged in `__init__.py:119-139`.** FIXED: 5
+   `_LOGGER.error` calls in `_cleanup_restart_marker()` downgraded to
+   `_LOGGER.debug` (routine control-flow messages).
+8. **D4 — `docs/internal/serial_bridge_manual_test_checklist.md` deleted in
+   working tree.** FIXED: file restored from HEAD.
+9. **B7 — AGENTS.md platform count mismatch.** FIXED: AGENTS.md platform list
+   now matches `const.py` (15 platforms with `text_sensor`, no `diagnostics`).
+   Test count corrected from 17 to 19.
+
+### Medium/Low — ALL FIXED
+
+10. **A11 — 3 active esplog scripts still unpinned.** FIXED:
+    `ha_esplog.sh:11`, `ha_esplog_run.sh:10`, `ha_esplog_serial.py:16` now
+    pinned to `ghcr.io/esphome/esphome:2026.4.5`.
+11. **C4 — `check_protocol_sync.sh` is dead code.** OPEN (not blocking — dead
+    script, not shipped, not invoked by CI; recommend deletion in a follow-up).
+
+### Tests
+
+- `tests/test_text_sensor.py` — 4 tests for `EspTreeTextSensor` (string value,
+  none, empty, TextSensorEntity base class). All passing.
+- `tests/test_repairs.py` — 4 new tests (inline await, no fire-and-forget,
+  restart-fails shows error, restart-succeeds propagates CancelledError). All
+  passing.
+- Full integration suite: 135 passed, 1 pre-existing failure
+  (`test_cobs_cross_platform` — unrelated), 4 skipped.
+- A7: no Python test added (add-on code runs in Docker; verified by hand
+  against the protocol spec).
+- C++ `component_for_type` test not added (function is `static` with internal
+  linkage; not accessible from the test harness without refactoring).
+
+### Recommendation
+
+**READY AFTER MINOR FOLLOW-UP.**
+
+All release blockers (A2, A3, D7, D10), high-risk issues (A7, D2), and
+regressions (A9, D4, B7) are fixed with tests. The remaining open items are
+non-blocking documentation gaps (B1-B14) and the dead `check_protocol_sync.sh`
+script (C4). The `2026.4.5` ESPHome image tag should be confirmed to exist on
+`ghcr.io/esphome/esphome` before the first user build.

@@ -73,7 +73,7 @@ Read `ui/src/components/topology-node.ts` around lines 101-102, confirm the idle
 - [ ] **Step 1: Build the UI**
 
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha/ui && npm run build
+cd /home/ben/projects/esphomenow-tree-ha/ui && npm run build
 ```
 
 Expected: Build succeeds with no errors.

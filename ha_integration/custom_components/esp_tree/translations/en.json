@@ -33,6 +33,9 @@
             "title": "Restart required",
             "description": "Restart of Home Assistant is required to finish download/update of {name}, click submit to restart now."
           }
+        },
+        "error": {
+          "restart_failed": "Restart did not execute. Check the Home Assistant logs and try again."
         }
       }
     }

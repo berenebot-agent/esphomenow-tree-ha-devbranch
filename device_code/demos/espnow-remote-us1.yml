@@ -42,8 +42,8 @@ esp_tree_remote:
   espnow_mode: regular
   ota_over_espnow: true
   heartbeat_interval_seconds: 10
-  preferred_parents:
-    - "F4:2D:C9:58:33:10"
+  # preferred_parents:
+  #   - "AA:BB:CC:DD:EE:FF"  # set to your relay's MAC(s)
 
 switch:
   - platform: gpio

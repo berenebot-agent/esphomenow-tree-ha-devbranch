@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/command_queue_test.cpp" "CMakeFiles/command_queue_test.dir/command_queue_test.cpp.o" "gcc" "CMakeFiles/command_queue_test.dir/command_queue_test.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/tests/command_queue_test.cpp" "CMakeFiles/command_queue_test.dir/command_queue_test.cpp.o" "gcc" "CMakeFiles/command_queue_test.dir/command_queue_test.cpp.o.d"
   "" "command_queue_test" "gcc" "CMakeFiles/command_queue_test.dir/link.d"
   )
 

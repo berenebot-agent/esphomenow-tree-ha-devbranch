@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/hop_encoding_test.cpp" "CMakeFiles/hop_encoding_test.dir/hop_encoding_test.cpp.o" "gcc" "CMakeFiles/hop_encoding_test.dir/hop_encoding_test.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/tests/hop_encoding_test.cpp" "CMakeFiles/hop_encoding_test.dir/hop_encoding_test.cpp.o" "gcc" "CMakeFiles/hop_encoding_test.dir/hop_encoding_test.cpp.o.d"
   "" "hop_encoding_test" "gcc" "CMakeFiles/hop_encoding_test.dir/link.d"
   )
 

@@ -34,7 +34,7 @@ When talking to the user, be concise — answer in 1-3 sentences or fewer. Avoid
 │   │   └── esp_tree_common/        ← Shared: crypto, types, protocol
 │   ├── demos/                 ← Example YAML configs for bridge & remotes
 │   ├── scripts/               ← Compile, flash, esplog, serial scripts
-│   ├── tests/                 ← C++ unit tests (CMake, 17 test targets)
+│   ├── tests/                 ← C++ unit tests (CMake, 19 test targets)
 │   └── README.md             ← Device code spec and protocol docs
 ├── dev.sh                   ← Unified dev menu (interactive + CLI subcommands)
 ├── config.yaml              ← Add-on configuration
@@ -105,7 +105,7 @@ The integration connects to the add-on (not directly to the bridge) via WebSocke
 ### HA Integration Entities
 
 The integration creates HA entities from bridge topology data. Supported platforms:
-`sensor`, `binary_sensor`, `button`, `switch`, `number`, `text`, `select`, `alarm_control_panel`, `cover`, `fan`, `light`, `lock`, `valve`, `event`
+`sensor`, `text_sensor`, `binary_sensor`, `switch`, `button`, `number`, `select`, `text`, `light`, `fan`, `cover`, `valve`, `lock`, `alarm_control_panel`, `event`
 
 Each entity subscribes to `EspTreeRuntime` state changes on `async_added_to_hass`. Entities expose remote-level metadata (RSSI, hops, session, schema_hash) as extra state attributes. Devices are parented to the bridge device in the HA device registry.
 
@@ -126,8 +126,6 @@ Each entity subscribes to `EspTreeRuntime` state changes on `async_added_to_hass
 **Log server:** `scripts/log_listener.py` at `10.1.1.23:9999` (screen session, started by `dev.sh qc`)
 **Log file:** `logs/esp_tree_debug.jsonl` (cleared if > 24h old)
 **Read logs:** `curl http://10.1.1.23:9999/logs`
-
-Both addon and integration use `remote_logger_dev_only.py` (temporary, remove when debugging complete). Attaches to root logger — all `logger.info/error/debug/warning` calls forwarded.
 
 ### Version Bumps
 
@@ -222,7 +220,7 @@ ESP firmware for bridge and remote nodes. ESPHome external components + demo YAM
 ./dev.sh run-cpp       # Run with ctest
 ```
 
-17 test targets covering: protocol logic, heartbeat, packet sizes, parse helpers, counters, fragment assembly, route expiry, join status codes, state machine, retry backoff, encryption (OpenSSL), hop encoding, fragment interleaving, error handling, boundary cases, file receiver, bridge OTA manager, bridge API proto messages.
+19 test targets covering: protocol logic, heartbeat, packet sizes, parse helpers, counters, fragment assembly, route expiry, join status codes, state machine, retry backoff, encryption (OpenSSL), hop encoding, fragment interleaving, error handling, boundary cases, file receiver, bridge OTA manager, bridge API proto messages, COBS codec.
 
 ### Live ESP Logging (esplog)
 

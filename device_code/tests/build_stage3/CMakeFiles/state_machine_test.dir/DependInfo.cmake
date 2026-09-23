@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/state_machine_test.cpp" "CMakeFiles/state_machine_test.dir/state_machine_test.cpp.o" "gcc" "CMakeFiles/state_machine_test.dir/state_machine_test.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/tests/state_machine_test.cpp" "CMakeFiles/state_machine_test.dir/state_machine_test.cpp.o" "gcc" "CMakeFiles/state_machine_test.dir/state_machine_test.cpp.o.d"
   "" "state_machine_test" "gcc" "CMakeFiles/state_machine_test.dir/link.d"
   )
 

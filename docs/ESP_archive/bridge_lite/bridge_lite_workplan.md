@@ -145,7 +145,7 @@ This produces:
 
 ```bash
 # C++: check that nanopb headers compile
-cd /home/ben/ai-hermes-agent/ESPLR_V2
+cd /home/ben/projects/ESPLR_V2
 # We'll verify in Phase 3 when the C++ code includes them
 
 # Python: quick smoke test
@@ -797,7 +797,7 @@ ruff check bridge_lite_client/ tests/
 pytest tests/ -v
 
 # ESP compile
-cd /home/ben/ai-hermes-agent/ESPLR_V2
+cd /home/ben/projects/ESPLR_V2
 ./compile.sh espnow-bridge-lite b
 ```
 

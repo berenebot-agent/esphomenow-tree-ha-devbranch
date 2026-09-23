@@ -44,8 +44,8 @@ esp_tree_remote:
   heartbeat_interval_seconds: 10
   # Allow this remote to act as a relay for other nodes
   relay_enabled: true
-  preferred_parents:
-    - "AC:A7:04:BE:09:28"
+  # preferred_parents:
+  #   - "AA:BB:CC:DD:EE:FF"  # set to your relay's MAC(s)
 
 sensor:
   - platform: internal_temperature

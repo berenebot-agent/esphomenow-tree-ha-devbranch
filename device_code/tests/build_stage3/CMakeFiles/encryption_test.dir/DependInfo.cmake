@@ -8,8 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/encryption_test.cpp" "CMakeFiles/encryption_test.dir/encryption_test.cpp.o" "gcc" "CMakeFiles/encryption_test.dir/encryption_test.cpp.o.d"
-  "/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp" "CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o" "gcc" "CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/tests/encryption_test.cpp" "CMakeFiles/encryption_test.dir/encryption_test.cpp.o" "gcc" "CMakeFiles/encryption_test.dir/encryption_test.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp" "CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o" "gcc" "CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o.d"
   "" "encryption_test" "gcc" "CMakeFiles/encryption_test.dir/link.d"
   )
 

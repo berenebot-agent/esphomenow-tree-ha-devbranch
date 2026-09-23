@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/counter_test.cpp" "CMakeFiles/counter_test.dir/counter_test.cpp.o" "gcc" "CMakeFiles/counter_test.dir/counter_test.cpp.o.d"
+  "/home/ben/projects/ESPLR_V2/tests/counter_test.cpp" "CMakeFiles/counter_test.dir/counter_test.cpp.o" "gcc" "CMakeFiles/counter_test.dir/counter_test.cpp.o.d"
   "" "counter_test" "gcc" "CMakeFiles/counter_test.dir/link.d"
   )
 

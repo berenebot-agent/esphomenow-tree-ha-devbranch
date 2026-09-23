@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/home/ben/ai-hermes-agent/ESPLR_V2/tests -I/home/ben/ai-hermes-agent/ESPLR_V2/tests/mocks -I/home/ben/ai-hermes-agent/ESPLR_V2/tests/.. -I/home/ben/ai-hermes-agent/ESPLR_V2/tests/../components
+CXX_INCLUDES = -I/home/ben/projects/ESPLR_V2/tests -I/home/ben/projects/ESPLR_V2/tests/mocks -I/home/ben/projects/ESPLR_V2/tests/.. -I/home/ben/projects/ESPLR_V2/tests/../components
 
 CXX_FLAGS = -std=gnu++17
 

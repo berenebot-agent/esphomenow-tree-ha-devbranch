@@ -1,1 +1,1 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/protocol_test.dir/link.d CMakeFiles/protocol_test.dir/protocol_test.cpp.o "CMakeFiles/protocol_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/esp_tree_common/espnow_crypto.cpp.o" -o protocol_test  /usr/lib/x86_64-linux-gnu/libcrypto.so
+/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/protocol_test.dir/link.d CMakeFiles/protocol_test.dir/protocol_test.cpp.o "CMakeFiles/protocol_test.dir/home/ben/projects/ESPLR_V2/components/esp_tree_common/espnow_crypto.cpp.o" -o protocol_test  /usr/lib/x86_64-linux-gnu/libcrypto.so

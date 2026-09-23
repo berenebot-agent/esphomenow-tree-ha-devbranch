@@ -22,8 +22,17 @@ class RestartRequiredFlow(RepairsFlow):
 
     async def async_step_confirm_restart(self, user_input: dict | None = None) -> data_entry_flow.FlowResult:
         if user_input is not None:
-            self.hass.async_create_task(self._do_restart())
-            return self.async_create_entry(title="", data={})
+            try:
+                await self._do_restart()
+            except asyncio.CancelledError:
+                raise
+            _LOGGER.error("Restart was requested but did not execute — the repair issue remains open")
+            return self.async_show_form(
+                step_id="confirm_restart",
+                data_schema=vol.Schema({}),
+                description_placeholders={"name": "ESP Tree"},
+                errors={"base": "restart_failed"},
+            )
 
         return self.async_show_form(
             step_id="confirm_restart",

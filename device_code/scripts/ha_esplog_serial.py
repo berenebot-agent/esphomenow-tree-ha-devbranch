@@ -13,7 +13,7 @@ from pathlib import Path
 
 PROJ_DIR = Path(__file__).parent.resolve()
 DEMOS_DIR = PROJ_DIR / "demos"
-DOCKER_IMG = "ghcr.io/esphome/esphome:latest"
+DOCKER_IMG = "ghcr.io/esphome/esphome:2026.4.5"
 
 
 if __name__ == "__main__":

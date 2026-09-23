@@ -98,7 +98,7 @@ cp app/protobuf/esp_tree_runtime.proto ha_integration/custom_components/esp_tree
 - [ ] **Step 3: Regenerate protobuf Python bindings**
 
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && python3 -m grpc_tools.protoc -I app/protobuf --python_out=app/protobuf/generated --pyi_out=app/protobuf/generated app/protobuf/esp_tree_runtime.proto && python3 -m grpc_tools.protoc -I app/protobuf --python_out=ha_integration/custom_components/esp_tree/protobuf/generated --pyi_out=ha_integration/custom_components/esp_tree/protobuf/generated app/protobuf/esp_tree_runtime.proto
+cd /home/ben/projects/esphomenow-tree-ha && python3 -m grpc_tools.protoc -I app/protobuf --python_out=app/protobuf/generated --pyi_out=app/protobuf/generated app/protobuf/esp_tree_runtime.proto && python3 -m grpc_tools.protoc -I app/protobuf --python_out=ha_integration/custom_components/esp_tree/protobuf/generated --pyi_out=ha_integration/custom_components/esp_tree/protobuf/generated app/protobuf/esp_tree_runtime.proto
 ```
 
 - [ ] **Step 4: Verify proto sync**
@@ -414,19 +414,19 @@ If the URL format is different (e.g., `/device/<device_id>`), update the `href` 
 - [ ] **Step 1: Build the UI**
 
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha/ui && npm run build
+cd /home/ben/projects/esphomenow-tree-ha/ui && npm run build
 ```
 
 - [ ] **Step 2: Run C++ tests to verify bridge firmware is unaffected**
 
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && ./dev.sh run-cpp
+cd /home/ben/projects/esphomenow-tree-ha && ./dev.sh run-cpp
 ```
 
 - [ ] **Step 3: Verify proto sync with QC pipeline**
 
 ```bash
-cd /home/ben/ai-hermes-agent/esphomenow-tree-ha && ./dev.sh qc
+cd /home/ben/projects/esphomenow-tree-ha && ./dev.sh qc
 ```
 
 Note: `dev.sh qc` bumps version, so this may create a commit. Only run if you want a version bump.

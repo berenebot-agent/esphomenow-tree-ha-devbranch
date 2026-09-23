@@ -2,8 +2,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/encryption_test.dir/link.d"
   "CMakeFiles/encryption_test.dir/encryption_test.cpp.o"
   "CMakeFiles/encryption_test.dir/encryption_test.cpp.o.d"
-  "CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o"
-  "CMakeFiles/encryption_test.dir/home/ben/ai-hermes-agent/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o.d"
+  "CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o"
+  "CMakeFiles/encryption_test.dir/home/ben/projects/ESPLR_V2/components/espnow_lr_common/espnow_crypto.cpp.o.d"
   "encryption_test"
   "encryption_test.pdb"
 )

@@ -4,7 +4,7 @@ FROM ghcr.io/home-assistant/${BUILD_ARCH}-base-debian:bookworm
 ARG BUILD_ARCH
 ARG GIT_HASH=unknown
 ARG GIT_DATE=unknown
-ARG BUILD_VERSION=0.1.58
+ARG BUILD_VERSION=0.1.272
 ENV GIT_HASH=${GIT_HASH} GIT_DATE=${GIT_DATE}
 
 LABEL \
@@ -13,7 +13,7 @@ LABEL \
   io.hass.arch=${BUILD_ARCH} \
   org.opencontainers.image.title="ESP Tree" \
   org.opencontainers.image.description="Home Assistant add-on for ESP-NOW topology and OTA" \
-  org.opencontainers.image.source="https://github.com/dellarb/esp-tree-ha"
+  org.opencontainers.image.source="https://github.com/berenebot-agent/esptree-dev"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

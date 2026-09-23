@@ -36,6 +36,7 @@ INTEGRATION_VERSION = _read_integration_version()
 
 PLATFORMS = [
     "sensor",
+    "text_sensor",
     "binary_sensor",
     "switch",
     "button",

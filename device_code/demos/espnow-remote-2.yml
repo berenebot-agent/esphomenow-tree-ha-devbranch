@@ -60,8 +60,8 @@ esp_tree_remote:
   relay_enabled: true
 # Heartbeat interval in seconds (send heartbeat if no state changes)
   heartbeat_interval_seconds: 10
-  preferred_parents:
-    - "E8:3D:C1:9D:6C:D0"
+  # preferred_parents:
+  #   - "AA:BB:CC:DD:EE:FF"  # set to your relay's MAC(s)
 
 #deep_sleep:
 #  id: deep_sleep_control

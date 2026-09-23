@@ -7,7 +7,7 @@ set(CMAKE_DEPENDS_GENERATOR "Unix Makefiles")
 # The top level Makefile was generated from the following files:
 set(CMAKE_MAKEFILE_DEPENDS
   "CMakeCache.txt"
-  "/home/ben/ai-hermes-agent/ESPLR_V2/tests/CMakeLists.txt"
+  "/home/ben/projects/ESPLR_V2/tests/CMakeLists.txt"
   "CMakeFiles/3.31.6/CMakeCXXCompiler.cmake"
   "CMakeFiles/3.31.6/CMakeSystem.cmake"
   "/usr/share/cmake-3.31/Modules/CMakeCXXCompiler.cmake.in"

@@ -19,8 +19,8 @@ This document defines the next major architecture step for the ESPNow Tree proje
 The design goal is pragmatic robustness. The integration should feel native in Home Assistant, avoid tying remote devices to one bridge, and avoid over-engineering the radio layer.
 
 
-The home assistant addon/integration repo is at: /home/ben/ai-hermes-agent/esphomenow-tree-ha
-The ESP device repo containing the bridge code is at:  /home/ben/ai-hermes-agent/ESPLR_V2
+The home assistant addon/integration repo is at: /home/ben/projects/esphomenow-tree-ha
+The ESP device repo containing the bridge code is at:  /home/ben/projects/ESPLR_V2
 
 
 ---

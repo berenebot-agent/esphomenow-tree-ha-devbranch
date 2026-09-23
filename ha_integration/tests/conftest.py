@@ -28,7 +28,9 @@ def _setup_mocks():
 
     for name in ["voluptuous"]:
         if name not in sys.modules:
-            sys.modules[name] = types.ModuleType(name)
+            mod = types.ModuleType(name)
+            mod.Schema = lambda data: data
+            sys.modules[name] = mod
 
     ha = types.ModuleType("homeassistant")
     ha.core = types.ModuleType("homeassistant.core")
@@ -173,6 +175,10 @@ def _setup_mocks():
     event_mod = types.ModuleType("homeassistant.components.event")
     event_mod.EventEntity = type("EventEntity", (object,), {"__init__": lambda self: None})
     sys.modules["homeassistant.components.event"] = event_mod
+
+    text_sensor_mod = types.ModuleType("homeassistant.components.text_sensor")
+    text_sensor_mod.TextSensorEntity = type("TextSensorEntity", (object,), {"__init__": lambda self: None})
+    sys.modules["homeassistant.components.text_sensor"] = text_sensor_mod
 
     # Register esp_tree as namespace package (skip __init__.py)
     cc = types.ModuleType("custom_components")

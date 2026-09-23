@@ -63,7 +63,7 @@ Every entity type must support the **same commands and state semantics** via the
 **Status:** All 6 fixes implemented and firmware builds successfully (2026-05-08).
 
 **Files modified:**
-- `/home/ben/ai-hermes-agent/ESPLR_V2/components/esp_tree_bridge/esp_tree_bridge.cpp` (only file changed)
+- `/home/ben/projects/ESPLR_V2/components/esp_tree_bridge/esp_tree_bridge.cpp` (only file changed)
 
 ### MQTT vs Proto Alignment Audit (Pre-Fix)
 
@@ -307,7 +307,7 @@ case FIELD_TYPE_LOCK: {
 Built successfully on 2026-05-08 with `espnow-bridge-c5` target. No regressions expected — all changes are additive (new command mappings, new explicit cases for ALARM/LOCK in switch, JSON passthrough only activates when args start with `{`).
 
 ```bash
-cd /home/ben/ai-hermes-agent/ESPLR_V2 && ./compile.sh
+cd /home/ben/projects/ESPLR_V2 && ./compile.sh
 ```
 
 Verify no regression on existing switch/binary/button/number/select commands. All existing simple command mappings (`turn_on`→`"ON"`, etc.) are preserved; the new mappings and JSON passthrough are additive.
