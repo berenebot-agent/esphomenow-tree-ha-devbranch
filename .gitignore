@@ -18,3 +18,8 @@ ui/node_modules/
 .opencode/
 .agents/
 logs/
+
+# Local scratch for build artefacts, logs and one-off test output. Never commit.
+# Temp work belongs here, inside the repo -- not in ad-hoc folders elsewhere.
+.local/
+*.local.log
