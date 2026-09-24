@@ -1,13 +1,15 @@
 # ESP Tree
 
 ESP Tree puts ESPHome-style ESP32 sensor and actuator nodes on a **Home Assistant
-add-on + integration**, talking over **ESP-NOW Long Range (LR)** to a single
-WiFi-connected bridge.
+add-on + integration**, talking over **ESP-NOW** to one active bridge over WiFi
+or a wired serial transport. Both ESP-NOW Long Range (LR) and regular mode are
+supported; the shipped reference demos currently use regular mode.
 
-- A **bridge** (ESP32-C5 in the reference build) joins WiFi and speaks ESP-NOW LR
-  to the nodes, exposes them to Home Assistant (MQTT discovery and/or the
-  protobuf WebSocket API), and carries OTA to them.
-- **Remotes / leaves** (ESP32-C3, ESP32, ESP8266) declare ordinary ESPHome
+- A **bridge** (ESP32-C5 in the reference build) coordinates the nodes and
+  forwards remote OTA. A WiFi bridge can expose MQTT discovery and/or the
+  protobuf WebSocket API; a serial bridge carries the protobuf API over UART.
+- **Remotes / leaves** (ESP32 classic/C3 in the shipped ESPHome demos, with
+  ESP8266 support through the legacy component) declare ordinary ESPHome
   entities — sensor, text_sensor, switch, binary_sensor, button, number, select,
   text, light, fan, cover, valve, lock, alarm_control_panel, event — and the
   add-on manages the network: topology, diagnostics, compile, flash, OTA and
@@ -16,20 +18,20 @@ WiFi-connected bridge.
   are blind: only the bridge and the leaf hold the session key.
 
 The add-on is the management plane and the HA integration is a client of it; the
-integration never talks to the bridge directly. One bridge per Home Assistant
-instance.
+integration never talks to the bridge directly. Multiple bridge records can be
+stored, but at most one is active at a time.
 
 ## Repository layout
 
 | Path | Contents |
 |------|----------|
-| `app/` | Add-on backend (FastAPI), bridge WebSocket clients, OTA/compile workers, stores, protobuf |
+| `app/` | Add-on backend (FastAPI), bridge WiFi/serial clients, OTA/compile workers, stores, protobuf |
 | `ha_integration/custom_components/esp_tree/` | Home Assistant integration: entities, services, config flow, repairs |
 | `ui/` | Lit/Vite web interface served through HA ingress |
 | `device_code/components/` | ESPHome external components: `esp_tree_bridge`, `esp_tree_remote`, `espnow_82xx_remote`, `esp_tree_common` |
 | `device_code/demos/` | Firmware configurations (bridge, remotes, serial-transport variant) |
 | `device_code/tests/` | C++ unit tests |
-| `test/` | Standalone add-on test environment (runs the UI without Home Assistant) |
+| `test/` | Standalone add-on UI harness; Home Assistant-only setup and cleanup actions are unavailable |
 | `scripts/`, `device_code/scripts/` | Development, compile, flash and logging helpers |
 | `docs/` | Protocol, API, roadmap and workplan documents |
 | `rootfs/` | Container init: installs the integration into `/config`, announces discovery |
@@ -41,12 +43,18 @@ See `CONTRIBUTING.md` for the per-domain entry points and
 
 - **Home Assistant OS or Supervised** for the add-on. It uses ingress for user
   auth and `SUPERVISOR_TOKEN` for the Core API, and installs the integration into
-  `/config/custom_components`.
-- An **ESP32** board for the bridge. The reference demos use
-  `esp32-c5-devkitc-1`; remotes run on C3/C5/classic. ESP8266 (ESP-01/ESP-12E)
-  leaves are supported through `espnow_82xx_remote`, with the constraints in
+  `/config/custom_components` (mounted as `/homeassistant` inside the add-on).
+- An **ESP32** board for the bridge. The reference bridge demos use
+  `esp32-c5-devkitc-1`; shipped remote demos use classic ESP32, ESP32-C3 and
+  ESP8266 boards. ESP8266 (ESP-01/ESP-12E) leaves use `espnow_82xx_remote`, are
+  regular-mode only, and have the limitations documented in
   `docs/esptree_radio_v3_spec.md` § ESP82xx Leaf Limitations.
-- **Docker** for firmware builds and the standalone test environment.
+- **Docker** for developer firmware builds and the standalone add-on test
+  environment. Firmware compilation initiated inside the add-on runs in its
+  container and bootstraps a local ESPHome virtual environment.
+- **Chrome or Edge over HTTPS** for browser-based USB flashing. The UI loads
+  `esp-web-tools` and `esptool-js` from `unpkg.com`, so those workflows also
+  require outbound internet access.
 
 ## Install the add-on
 
@@ -65,22 +73,38 @@ the HA base image.
 
 ### First run — the add-on's own wizard
 
-1. **Connect your bridge.** *I Already Have a Bridge* offers **Discover**
-   (scan the network), **Manual** (host, port, API key) and **Serial** (a local
-   serial device, or a `socket://host:port` passthrough). *Set Up a New Bridge*
-   compiles and flashes a fresh bridge over serial, then selects the transport
-   for you.
-2. **Restart Home Assistant.** The add-on has copied the integration into
-   `/config/custom_components`; the restart is what loads it.
-3. **Add the ESP Tree integration.** The add-on announces a discovery for the
-   `esp_tree` service, and the integration is added as a hub entry. Remotes are
-   discovered as they join and appear as devices.
+1. **Connect or provision a bridge.** *I Already Have a Bridge* offers
+   **Discover** (scan the network), **Manual** (host, port, API key) and
+   **Serial** (a locally discovered serial device). *Set Up a New Bridge* asks
+   you to choose WiFi or serial transport, compiles the firmware, then offers
+   browser USB flashing or add-on-side serial flashing as appropriate.
+2. **Activate the integration.** The wizard can request a Home Assistant restart
+   after copying the integration into `/config/custom_components`, then starts
+   the `esp_tree` config flow and announces Supervisor discovery. If automatic
+   setup is unavailable, the wizard links to **Devices & Services** for manual
+   setup.
+3. **Confirm each remote.** When a remote joins, Home Assistant presents a
+   discovery confirmation and optional area assignment. The remote becomes a
+   device after that confirmation.
 
 A new remote is flashed from the UI with the **Create Remote** wizard
-(`#/add-remote`): the add-on compiles the firmware, esp-web-tools writes it over
-Web Serial from the browser. The ESP-NOW credentials come from the configured
-bridge — a remote consumes credentials and never writes them, so a mismatched
-network is refused rather than silently replacing the live PSK.
+(`#/add-remote`): the add-on compiles the firmware, then esp-web-tools writes it
+over Web Serial from the browser. The ESP-NOW credentials come from the
+configured bridge — a remote consumes credentials and never writes them, so a
+mismatched network is refused rather than silently replacing the live PSK.
+
+### Home Assistant integration
+
+The integration creates one hub config entry and a separate config entry for each
+confirmed remote. It exposes the remote entity platforms listed above, plus
+diagnostic sensors: bridge WiFi signal, uptime, online remotes and direct
+children; remote RSSI, hop count, uptime, last-seen time and chip name.
+
+The integration registers `esp_tree.send_command`, `esp_tree.forget_remote` and
+`esp_tree.cleanup` services. Its Options flow can clean up integration data and
+remove the hub entry, and restart-required repairs can request a Home Assistant
+restart. Deleting a remote config entry or calling `forget_remote` also clears
+its retained runtime state and device-registry entry.
 
 ## Firmware (ESPHome external components)
 
@@ -94,17 +118,17 @@ resolved at compile time, so changing it requires reflashing the nodes.
 esp_tree_bridge:
   network_id: !secret espnow_network_id
   psk: !secret espnow_psk
-  espnow_mode: lr                 # lr (long range) or regular
+  espnow_mode: regular            # shipped demos; lr is available on supported ESP32 radios
   ota_over_espnow: true
   heartbeat_interval_seconds: 60
-  api_key: !secret bridge_api_key # HMAC key for the protobuf WebSocket API
+  api_key: !secret bridge_api_key # HMAC key for the protobuf API
 ```
 
 ```yaml
 esp_tree_remote:
   network_id: !secret espnow_network_id
   psk: !secret espnow_psk
-  espnow_mode: lr
+  espnow_mode: regular            # must match the bridge; lr is ESP32-only
   relay_enabled: true             # may forward for other nodes
   max_hops: 5
   route_ttl_seconds: 172800
@@ -118,12 +142,16 @@ sensor:
       name: "Shed Temperature"
 ```
 
-A remote does not need to associate with WiFi: the component brings up the radio
-itself and selects the ESP-NOW protocol from `espnow_mode`. The demos keep a
-`wifi:` block so a remote can be flashed over the network; `esp_tree_remote`
-itself pulls in neither WiFi credentials nor MQTT. Discovery sweeps the channels
-before locking to the bridge's channel, so keep every node on the same
-`network_id` and PSK.
+On ESP32, `esp_tree_remote` does not need to associate with WiFi: it brings up the
+radio itself and selects the ESP-NOW protocol from `espnow_mode`. The component
+pulls in neither WiFi credentials nor MQTT; the ESP32 demos keep a `wifi:` block
+so a device can also be flashed over the network. ESP32 remotes sweep channels
+while discovering and then lock to the selected parent's channel.
+
+The ESP8266 component is different: its demos retain a `wifi: ap:` block because
+ESPHome owns the radio, and `espnow_mode` accepts only `regular`. Its `channel`
+option defaults to channel 11. In every configuration, the bridge and remotes
+must use the same `network_id`, PSK and ESP-NOW mode.
 
 Bridge transport options:
 
@@ -141,9 +169,10 @@ Bridge transport options:
 for packet types, structures and field enums. The protocol is specified in
 `docs/esptree_radio_v3_spec.md` (frame layout, PSK and session tags, packet
 types, join flow, relay rules) and the API in
-`docs/esptree_api_protobuf_spec.md` (protobuf over WebSocket at
-`/esp-tree/v2/pb` for the bridge, `/esp-tree/integration/v1/pb` for the
-integration).
+`docs/esptree_api_protobuf_spec.md`. A WiFi bridge exposes protobuf over
+WebSocket at `/esp-tree/v2/pb`; the integration endpoint is
+`/esp-tree/integration/v1/pb`; the serial bridge carries the same protobuf
+messages in COBS-framed UART traffic.
 
 ## Add-on options
 
@@ -158,50 +187,80 @@ the reported firmware version is confirmed when available; and retention makes
 reflash-as-rollback the recovery path — any retained binary can be reflashed
 from the job history.
 
+## Day-to-day management
+
+- **Topology and device pages** show the active bridge, retained/offline remotes,
+  route hops, firmware and job state. Hiding a node is reversible. Removing a
+  stale remote is permanent and also removes it from Home Assistant and retained
+  history; live remotes and bridge records cannot be removed this way.
+- **Remote controls** include reboot, force rediscovery, relay enable/disable,
+  heartbeat interval and preferred-parent configuration. Device configuration
+  also exposes compile, compile-and-flash over ESP-NOW, browser USB flash and
+  factory/OTA binary downloads.
+- **Queue and history** keep compile jobs and OTA uploads in separate queues.
+  OTA jobs can be paused, reordered and aborted; per-job logs, combined
+  compile-then-flash history and the add-on activity log are available from the
+  UI.
+- **Settings** manage multiple stored bridge records with at most one active
+  bridge, network scans, add-on/integration status, Home Assistant restart,
+  cleanup of old build artifacts and the previous-installation cleanup gate.
+- **Secrets** are managed in the add-on's `secrets.yaml` editor and checked before
+  a compile. The file contains credentials and must be backed up and shared
+  securely. Persistent add-on state is stored under `/data`; shared integration
+  runtime state is stored under `/share/esp_tree`.
+
 ## Development
 
 ```bash
-./dev.sh                      # interactive menu
-./dev.sh compile              # ESPHome build menu
+./dev.sh                         # interactive menu
+./dev.sh compile                 # ESPHome build menu
 ./dev.sh build-cpp && ./dev.sh run-cpp
-./dev.sh verify global        # unit tests + C++ tests + smoke compile
-./dev.sh qc                   # verify, then version bump / commit / push
-./dev.sh flash-usb <port> <demo>
-./dev.sh esplog               # network log collector UI on :5555
+./dev.sh verify global           # unit tests + C++ tests + smoke compile
+./dev.sh qc                      # verify, then version bump / commit / push
+./dev.sh flash-usb <port> <demo> # flash an already-built demo over USB
+./dev.sh esplog [demo]           # stream ESPHome OTA logs for a selected demo
 ```
 
 ```bash
-./device_code/scripts/ha_compile.sh <demo> b     # build
-./device_code/scripts/ha_compile.sh <demo> bf    # build then flash
-./test/build.sh && ./test/start.sh               # standalone add-on, no HA
+./device_code/scripts/ha_compile.sh <demo> b       # build
+./device_code/scripts/ha_compile.sh <demo> bf      # build then flash
+./device_code/scripts/ha_esplog_run.sh restart     # network log collector on :5555
+./test/build.sh && ./test/start.sh                 # standalone add-on UI, no HA
 cd ui && npm ci && npm run build
 ```
 
-Add-on Python and firmware builds run in Docker, against the ESPHome version
-pinned in `requirements-compile.txt`; do not validate imports or Python syntax
-with the host `python`. Versions are bumped by `dev.sh qc`, not by hand. Build
-the smallest affected target — remote-only changes do not require a bridge build.
+Add-on Python is containerized; do not validate its imports or syntax with the
+host `python`. Firmware builds started by the add-on use a local virtual
+environment pinned by `requirements-compile.txt`, while developer demo builds
+run in the corresponding Docker image. `dev.sh qc` is a mutating release
+pipeline: it verifies, may regenerate files and bump versions, then commits and
+pushes. Build the smallest affected target — remote-only changes do not require
+a bridge build.
 
 ## Documentation
 
-- `docs/esptree_radio_v3_spec.md` — the ESP-NOW LR protocol (authoritative).
+- `docs/esptree_radio_v3_spec.md` — the ESP-NOW protocol, including LR and
+  regular mode (authoritative).
 - `docs/esptree_api_protobuf_spec.md` — protobuf/WebSocket API contract.
 - `docs/ESP_guide_usblog.md` — direct USB serial logging.
 - `docs/ESP_standalone.md` — ESP-IDF (non-ESPHome) remote implementation.
 - `docs/HA_workplan_multi_bridge.md`, `docs/ESP_roadmap_*.md`,
-  `docs/workplan_*.md` — roadmaps and workplans; the MQTT-optional and
-  serial-transport work are complete.
-- `docs/roadmap_publish.md` — the open OSS-readiness list, including known
-  documentation gaps.
+  `docs/workplan_*.md` — historical roadmaps and workplans. Check their status
+  against current code and dated manual-test checklists before relying on them.
+- `docs/roadmap_publish.md` — a historical OSS-readiness audit. Several entries
+  are now resolved, so verify each item against the current tree rather than
+  treating the whole file as an open-item list.
 - `DOCS.md` is **stale**: it documents the removed V1 HTTP API. Trust the
-  specifications and the code instead.
+  specifications, executable configuration and code instead.
 
 ## Status
 
-Working end to end against Home Assistant OS with a live ESP32-C5 bridge, over
-both the WiFi and serial transports — but not yet a polished OSS release. Open
-items tracked in `docs/roadmap_publish.md` include: no `LICENSE` file, no
-`.github/` issue or PR templates, a `CHANGELOG.md` that stopped at 0.1.38,
-missing board/chip compatibility guidance, and no troubleshooting or FAQ
-document. The ESP8266 demos are also known to lag the current protocol
-constants.
+Core add-on, integration, WiFi-bridge and serial-bridge paths are implemented,
+but this is not yet a polished OSS release. The serial implementation still has
+a manual hardware-test matrix in `docs/ESP_roadmap_workplan_serial_bridge.md`;
+use the current manual checklist before claiming a tested transport matrix.
+Known release-readiness gaps include no `LICENSE`, no `.github/` templates or
+support-policy files, a last released changelog entry of 0.1.38, incomplete
+board/chip compatibility guidance, and no dedicated troubleshooting or FAQ
+document. `docs/roadmap_publish.md` contains useful background but is not a
+current open-items list.
