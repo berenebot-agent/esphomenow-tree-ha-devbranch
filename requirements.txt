@@ -3,6 +3,6 @@ httpx==0.28.1
 python-multipart==0.0.20
 uvicorn[standard]==0.34.2
 websockets==15.0.1
-protobuf>=4.25.0
+protobuf>=6.31.1,<7
 pyserial>=3.5
 cobs>=1.1.0
