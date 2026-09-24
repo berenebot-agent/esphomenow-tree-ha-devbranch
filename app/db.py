@@ -392,6 +392,17 @@ class Database:
         with self.connect() as conn:
             return self.row(conn.execute("SELECT * FROM devices WHERE mac = ?", (normalize_mac(mac),)).fetchone())
 
+    def delete_device(self, mac: str) -> bool:
+        """Remove a device row. Used to clear the synthetic placeholder a remote
+        flash registers before the real node appears in the bridge topology."""
+        nm = normalize_mac(mac)
+        if not nm:
+            return False
+        with self.connect() as conn:
+            cursor = conn.execute("DELETE FROM devices WHERE mac = ?", (nm,))
+            conn.execute("DELETE FROM hidden_devices WHERE mac = ?", (nm,))
+            return cursor.rowcount > 0
+
     def rename_device_mac(self, old_mac: str, new_mac: str) -> None:
         old_nm = normalize_mac(old_mac)
         new_nm = normalize_mac(new_mac)

@@ -28,6 +28,8 @@ export interface TopologyNode {
   network_id?: string;
   hidden?: boolean;
   ha_device_id?: string;
+  /** True for remotes the integration retains but the bridge no longer advertises. */
+  from_integration_store?: boolean;
 }
 
 export interface OtaJob {
@@ -247,6 +249,7 @@ export interface AppConfig {
 
 export interface FlashWizardStatus {
   provisioning: boolean;
+  kind?: 'bridge' | 'remote';
   esphome_name?: string;
   mac?: string;
   transport?: string;
@@ -254,6 +257,7 @@ export interface FlashWizardStatus {
   compile_status?: string;
   serial_flash_status?: string;
   bridge_detected?: boolean;
+  remote_detected?: boolean;
   detected_bridge?: { host: string; port: number; name: string } | null;
 }
 
@@ -576,8 +580,9 @@ export const api = {
     board_info: Record<string, string>;
     serial_port?: string;
     transport?: string;
+    kind?: 'bridge' | 'remote';
   }) =>
-    request<{ status: string; mac: string; esphome_name: string; job_id: number }>('/api/bridge/flash-wizard/submit', {
+    request<{ status: string; mac: string; esphome_name: string; job_id: number; kind?: string }>('/api/bridge/flash-wizard/submit', {
       method: 'POST',
       body: JSON.stringify(config),
     }),

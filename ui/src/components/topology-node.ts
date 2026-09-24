@@ -44,7 +44,11 @@ export class EspTopologyNode extends LitElement {
     const isQueued = !!job && job.status === 'queued';
     const percent = job?.percent ?? 0;
     const hasChildren = this.childNodesData.length > 0;
-    const isRemote = (this.node.hops ?? 0) > 0;
+    // Any node that is not the tree root and not the bridge itself is a remote.
+    // Gating on `hops > 0` alone hid retained remotes: those are restored from the
+    // integration store without a hop count, so they silently lost their config
+    // badge and their Edit YAML button.
+    const isRemote = !this.isRoot && !this.node.is_bridge;
 
     const configStatus = this.configForMac(this.node.mac);
     const configState = configStatus?.config_state ?? 'no_config';

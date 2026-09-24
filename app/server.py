@@ -369,6 +369,10 @@ class FlashWizardSubmitRequest(BaseModel):
     serial_port: str = ""
     transport: str = "wifi"
     baud: int = 460800
+    # "bridge" (default) or "remote". A remote scaffolds esp_tree_remote, has no
+    # WiFi/api_key/web server, and must NOT create a bridges row - it is a node on
+    # the bridge's network, not a bridge.
+    kind: str = "bridge"
 
 
 def create_app() -> FastAPI:
@@ -384,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.287")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.288")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1683,6 +1687,10 @@ def create_app() -> FastAPI:
         return result
 
     PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FF"
+    # Remotes need their own synthetic key. Sharing PLACEHOLDER_MAC would collide
+    # with the in-flight bridge's device row (mac is the devices primary key), so a
+    # remote compile would overwrite the bridge's row and vice versa.
+    REMOTE_PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FE"
 
     @app.post("/api/bridge/flash-wizard/submit")
     async def flash_wizard_submit(body: FlashWizardSubmitRequest) -> dict[str, Any]:
@@ -1694,10 +1702,14 @@ def create_app() -> FastAPI:
         api_key = body.api_key.strip() or secrets_mod.token_urlsafe(24)
         ota_password = body.ota_password.strip() or secrets_mod.token_urlsafe(24)
         transport = (body.transport or "wifi").strip().lower()
+        kind = (body.kind or "bridge").strip().lower()
         if transport not in ("wifi", "serial"):
             raise HTTPException(status_code=400, detail=f"unsupported transport: {transport}")
+        if kind not in ("bridge", "remote"):
+            raise HTTPException(status_code=400, detail=f"unsupported kind: {kind}")
+        is_remote = kind == "remote"
 
-        logger.info("flash_wizard_submit: name=%s chip=%s transport=%s", name, chip_name, transport)
+        logger.info("flash_wizard_submit: name=%s chip=%s transport=%s kind=%s", name, chip_name, transport, kind)
 
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
@@ -1706,26 +1718,35 @@ def create_app() -> FastAPI:
 
         node = {
             "esphome_name": name,
-            "is_bridge": True,
+            "is_bridge": not is_remote,
             "chip_name": chip_name,
             "board_info": board_info,
             "espnow_mode": body.espnow_mode,
             "transport": transport,
-            "sdkconfig_options": {
-                "CONFIG_FREERTOS_USE_TRACE_FACILITY": "y",
-                "CONFIG_ESP_MAIN_TASK_STACK_SIZE": "12288",
-            },
-            "ota_password": "!secret ota_password",
-            "api_key": "!secret bridge_api_key",
-            "web_server_port": 80,
         }
-        if transport == "serial":
-            # No wifi: block in serial mode, so no wifi secrets may be referenced:
-            # a !secret with no matching key is a hard failure at config load.
-            node["serial_transport"] = True
+        if is_remote:
+            # A remote is ESP-NOW LR only: no wifi:, no api:/web_server:, no
+            # bridge api_key, no ota password. generate_scaffold already emits the
+            # remote component shape when is_bridge is false, so nothing extra is
+            # needed here beyond not asking for bridge-only blocks.
+            pass
         else:
-            node["wifi_ssid_secret"] = "wifi_ssid"
-            node["wifi_password_secret"] = "wifi_password"
+            node.update({
+                "sdkconfig_options": {
+                    "CONFIG_FREERTOS_USE_TRACE_FACILITY": "y",
+                    "CONFIG_ESP_MAIN_TASK_STACK_SIZE": "12288",
+                },
+                "ota_password": "!secret ota_password",
+                "api_key": "!secret bridge_api_key",
+                "web_server_port": 80,
+            })
+            if transport == "serial":
+                # No wifi: block in serial mode, so no wifi secrets may be referenced:
+                # a !secret with no matching key is a hard failure at config load.
+                node["serial_transport"] = True
+            else:
+                node["wifi_ssid_secret"] = "wifi_ssid"
+                node["wifi_password_secret"] = "wifi_password"
         yaml_content, _ = generate_scaffold(node)
         yaml_store.save_config(name, yaml_content)
         logger.info("flash_wizard_submit: saved yaml config for %s", name)
@@ -1733,10 +1754,11 @@ def create_app() -> FastAPI:
         secrets_to_merge = {
             "espnow_network_id": body.network_id,
             "espnow_psk": body.psk,
-            "bridge_api_key": api_key,
-            "ota_password": ota_password,
         }
-        if transport != "serial":
+        if not is_remote:
+            secrets_to_merge["bridge_api_key"] = api_key
+            secrets_to_merge["ota_password"] = ota_password
+        if transport != "serial" and not is_remote:
             # Serial configs have no wifi: block, so writing empty wifi secrets
             # would only leave unused junk in secrets.yaml.
             secrets_to_merge["wifi_ssid"] = body.wifi_ssid
@@ -1744,44 +1766,63 @@ def create_app() -> FastAPI:
         yaml_store.merge_secrets(secrets_to_merge)
         logger.info("flash_wizard_submit: merged secrets for %s", name)
 
-        existing_prov = db.get_provisioning_bridge()
-        if existing_prov:
-            db.delete_bridge(existing_prov["uuid"])
-
-        nm = normalize_mac(PLACEHOLDER_MAC)
+        nm = normalize_mac(PLACEHOLDER_MAC if not is_remote else REMOTE_PLACEHOLDER_MAC)
         try:
             await compiler.cancel_compile(name)
         except Exception:
             pass
 
-        bridge = db.add_bridge(
-            host="0.0.0.0",
-            port=0,
-            name=name,
-            discovered_via="flash_wizard",
-            api_key=api_key,
-            network_id=body.network_id,
-            mac=PLACEHOLDER_MAC,
-            flash_wizard_pending=1,
-            enabled=0,
-            # Carry the transport through to the bridge record, or the wizard's
-            # choice is lost here: the row would always look like a wifi bridge
-            # and the serial client would never be started for it.
-            transport=transport,
-            serial_port=body.serial_port.strip(),
-            baud=int(body.baud or 460800),
-        )
-        logger.info("flash_wizard_submit: created bridge record uuid=%s", bridge["uuid"])
+        bridge = None
+        if not is_remote:
+            existing_prov = db.get_provisioning_bridge()
+            if existing_prov:
+                db.delete_bridge(existing_prov["uuid"])
 
-        db.upsert_devices_from_topology([
-            {
-                "mac": PLACEHOLDER_MAC,
-                "label": name,
-                "esphome_name": name,
-                "chip_name": chip_name,
-                "is_bridge": True,
-            }
-        ], "0.0.0.0")
+            bridge = db.add_bridge(
+                host="0.0.0.0",
+                port=0,
+                name=name,
+                discovered_via="flash_wizard",
+                api_key=api_key,
+                network_id=body.network_id,
+                mac=PLACEHOLDER_MAC,
+                flash_wizard_pending=1,
+                enabled=0,
+                # Carry the transport through to the bridge record, or the wizard's
+                # choice is lost here: the row would always look like a wifi bridge
+                # and the serial client would never be started for it.
+                transport=transport,
+                serial_port=body.serial_port.strip(),
+                baud=int(body.baud or 460800),
+            )
+            logger.info("flash_wizard_submit: created bridge record uuid=%s", bridge["uuid"])
+
+        # A remote must NOT get a bridges row: it is a node on the bridge's
+        # network, not a bridge, and a row here would make the add-on try to open a
+        # transport to it. It also cannot claim PLACEHOLDER_MAC - that key is
+        # reserved for the single in-flight bridge provisioning, and a remote that
+        # took it would collide with (and delete) the bridge's own device row.
+        if is_remote:
+            db.upsert_devices_from_topology([
+                {
+                    "mac": nm,
+                    "label": name,
+                    "esphome_name": name,
+                    "chip_name": chip_name,
+                    "is_bridge": False,
+                }
+            ], "0.0.0.0")
+            logger.info("flash_wizard_submit: registered remote placeholder device name=%s", name)
+        else:
+            db.upsert_devices_from_topology([
+                {
+                    "mac": PLACEHOLDER_MAC,
+                    "label": name,
+                    "esphome_name": name,
+                    "chip_name": chip_name,
+                    "is_bridge": True,
+                }
+            ], "0.0.0.0")
 
         device = db.get_device(nm)
         logger.info("flash_wizard_submit: device lookup mac=%s found=%s esphome_name=%s", nm, device is not None, device.get("esphome_name") if device else None)
@@ -1806,13 +1847,22 @@ def create_app() -> FastAPI:
         compile_worker.wake()
         logger.info("flash_wizard_submit: created compile job id=%s mac=%s esphome_name=%s", job["id"], nm, name)
 
-        return {"status": "compiling", "mac": nm, "esphome_name": name, "job_id": job["id"]}
+        return {
+            "status": "compiling",
+            "mac": nm,
+            "esphome_name": name,
+            "job_id": job["id"],
+            "kind": kind,
+        }
 
     @app.get("/api/bridge/flash-wizard/status")
     async def flash_wizard_status() -> dict[str, Any]:
         prov = db.get_provisioning_bridge()
         if not prov:
-            return {"provisioning": False}
+            # A remote deliberately has no bridges row, so fall back to its device
+            # placeholder. Without this branch the remote wizard polls this endpoint
+            # and is told provisioning:false forever, i.e. it looks stuck at step 1.
+            return await _remote_provisioning_status()
         esphome_name = str(prov.get("name") or "")
         nm = normalize_mac(PLACEHOLDER_MAC)
         compile_status_dict = {}
@@ -1842,6 +1892,7 @@ def create_app() -> FastAPI:
 
         return {
             "provisioning": True,
+            "kind": "bridge",
             "esphome_name": esphome_name,
             "mac": PLACEHOLDER_MAC,
             "transport": prov_transport,
@@ -1850,6 +1901,42 @@ def create_app() -> FastAPI:
             "serial_flash_status": serial_status.get("status", "idle"),
             "bridge_detected": bridge_detected,
             "detected_bridge": detected_bridge,
+        }
+
+    async def _remote_provisioning_status() -> dict[str, Any]:
+        """Status for an in-flight remote flash (no bridges row by design)."""
+        nm = normalize_mac(REMOTE_PLACEHOLDER_MAC)
+        dev = db.get_device(nm)
+        if not dev:
+            return {"provisioning": False}
+        esphome_name = str(dev.get("esphome_name") or "")
+        active_job = db.active_job_for_device(nm)
+        compile_status_dict = {}
+        if active_job:
+            compile_status_dict = {"status": active_job["status"], "percent": active_job.get("percent")}
+        serial_status = {}
+        if esphome_name:
+            serial_status = compiler.serial_flash_status(esphome_name) or {}
+        # A remote has no host and no serial client: it is "detected" once the
+        # bridge reports it in its live topology, which is the real join signal.
+        remote_detected = False
+        if esphome_name:
+            remote_detected = any(
+                str(node.get("esphome_name") or node.get("label") or node.get("friendly_name") or "") == esphome_name
+                for node in bridge_manager.get_topology_list()
+            )
+        return {
+            "provisioning": True,
+            "kind": "remote",
+            "esphome_name": esphome_name,
+            "mac": nm,
+            "transport": "espnow",
+            "serial_port": "",
+            "compile_status": compile_status_dict.get("status", "idle"),
+            "serial_flash_status": serial_status.get("status", "idle"),
+            "bridge_detected": remote_detected,
+            "remote_detected": remote_detected,
+            "detected_bridge": None,
         }
 
     @app.post("/api/bridge/flash-wizard/finalize")
@@ -1863,6 +1950,15 @@ def create_app() -> FastAPI:
         """
         prov = db.get_provisioning_bridge()
         if not prov:
+            # Remote finish: drop the synthetic placeholder row. The remote is added
+            # for real by the normal topology upsert once it joins the bridge, so
+            # keeping the placeholder would leave a permanent fake offline node.
+            nm = normalize_mac(REMOTE_PLACEHOLDER_MAC)
+            dev = db.get_device(nm)
+            if dev:
+                db.delete_device(nm)
+                logger.info("flash_wizard_finalize: cleared remote placeholder %s", nm)
+                return {"activated": False, "kind": "remote", "detail": "remote placeholder cleared"}
             return {"activated": False, "detail": "no provisioning bridge"}
         activated = await _try_auto_activate_provisioned_bridge()
         return {
@@ -2028,36 +2124,74 @@ def create_app() -> FastAPI:
         if not manager:
             raise HTTPException(status_code=503, detail="WebSocket transport is not active")
         try:
-            cached = await manager.topology()
-            if cached:
-                hidden_macs = db.get_hidden_macs()
-                for node in cached:
-                    node["hidden"] = node.get("mac") in hidden_macs
-                return cached
-            if manager.connected:
+            nodes = await manager.topology()
+            if not nodes and manager.connected:
                 logger.info("topology empty but bridge connected, retrying with refresh")
                 await manager.refresh_once()
                 await asyncio.sleep(0.5)
-                cached = await manager.topology()
-                if cached:
-                    hidden_macs = db.get_hidden_macs()
-                    for node in cached:
-                        node["hidden"] = node.get("mac") in hidden_macs
-                    return cached
-            raise RuntimeError("bridge returned an empty topology")
+                nodes = await manager.topology()
+            if not nodes:
+                raise RuntimeError("bridge returned an empty topology")
         except Exception as exc:
-            cached = manager.get_topology_list()
-            if cached:
-                hidden_macs = db.get_hidden_macs()
-                for node in cached:
-                    node["hidden"] = node.get("mac") in hidden_macs
-                return cached
-            msg = str(exc)
-            if isinstance(exc, OSError) and exc.errno == 113:
-                msg = "Bridge is unreachable — make sure the bridge is powered on and connected to the network, then restart the add-on"
-            elif "Cannot connect to bridge" in msg:
-                msg = "Bridge is unreachable — make sure the bridge is powered on and connected to the network, then restart the add-on"
-            raise HTTPException(status_code=502, detail=msg) from exc
+            nodes = manager.get_topology_list()
+            if not nodes:
+                msg = str(exc)
+                if isinstance(exc, OSError) and exc.errno == 113:
+                    msg = "Bridge is unreachable — make sure the bridge is powered on and connected to the network, then restart the add-on"
+                elif "Cannot connect to bridge" in msg:
+                    msg = "Bridge is unreachable — make sure the bridge is powered on and connected to the network, then restart the add-on"
+                raise HTTPException(status_code=502, detail=msg) from exc
+
+        hidden_macs = db.get_hidden_macs()
+        for node in nodes:
+            node["hidden"] = node.get("mac") in hidden_macs
+
+        # Append remotes the integration still retains from earlier sessions. The
+        # bridge only advertises what is currently reachable, so a retained remote
+        # otherwise exists in the counts but has no row anywhere - it cannot be
+        # seen, edited or cleared. Draw it as an offline node instead.
+        known_macs = {str(node.get("mac") or "").upper() for node in nodes}
+        active = db.get_active_bridge() or {}
+        bridge_mac = str(active.get("mac") or "").upper()
+        for remote in await _retained_remotes():
+            mac = str(remote.get("mac") or "").upper()
+            if not mac or mac in known_macs:
+                continue
+            nodes.append(
+                {
+                    "mac": mac,
+                    "node_key": mac.replace(":", ""),
+                    "name": remote.get("name") or mac,
+                    "esphome_name": remote.get("esphome_name") or remote.get("name") or mac,
+                    "friendly_name": remote.get("name") or mac,
+                    "label": remote.get("name") or mac,
+                    "parent_mac": bridge_mac,
+                    "online": False,
+                    "hops": int(remote.get("hops") or 0),
+                    "offline_reason": "not seen by bridge",
+                    "offline_started_at": None,
+                    "entity_count": int(remote.get("entity_count") or 0),
+                    "chip_name": "",
+                    "is_bridge": False,
+                    "from_integration_store": True,
+                    "hidden": mac in hidden_macs,
+                }
+            )
+        return nodes
+
+    async def _retained_remotes() -> list[dict[str, Any]]:
+        """Remotes the integration still holds, including offline/retained ones."""
+        if not settings.supervisor_token:
+            return []
+        try:
+            msg = await ha_ws_call({"type": "esp_tree/remotes"}, timeout=2.0)
+        except Exception:
+            return []
+        result = msg.get("result") if isinstance(msg, dict) else None
+        if not isinstance(result, dict):
+            return []
+        remotes = result.get("remotes")
+        return remotes if isinstance(remotes, list) else []
 
     @app.delete("/api/topology/hide/{mac}")
     async def hide_device(mac: str) -> dict[str, Any]:

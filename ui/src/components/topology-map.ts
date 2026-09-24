@@ -105,13 +105,28 @@ export class EspTopologyMap extends LitElement {
 
   render() {
     const { root } = this.buildChildren();
-    const visibleTopology = this.topology.filter((n) => !n.hidden && (n.hops ?? 0) > 0);
+    const rootMac = this.childKey(root?.mac || '');
+    // The topology list is what the bridge currently reports, plus remotes retained
+    // from earlier sessions. A retained remote has no hop count, so filtering on
+    // `hops > 0` dropped it off the page entirely - it stayed in the "known"
+    // count with no row and no way to edit or clear it. Keep any non-hidden node
+    // that is either reachable (hops > 0) or a retained remote (not the root
+    // bridge), and let it render as an offline row.
+    const visibleTopology = this.topology.filter((n) => {
+      if (n.hidden) return false;
+      if ((n.hops ?? 0) > 0) return true;
+      return !n.is_bridge && this.childKey(n.mac) !== rootMac;
+    });
     const hiddenDevices = this.topology.filter((n) => n.hidden);
 
+    const visibleMacs = new Set(visibleTopology.map((n) => this.childKey(n.mac)));
     const visibleChildMap = new Map<string, TopologyNode[]>();
     for (const node of visibleTopology) {
-      const parent = this.childKey(node.parent_mac);
-      if (!parent) continue;
+      if (this.childKey(node.mac) === rootMac) continue;
+      let parent = this.childKey(node.parent_mac);
+      // A retained remote has no parent_mac to hang off (or names a parent that is
+      // gone), so park it under the bridge rather than dropping it from the tree.
+      if (!parent || !visibleMacs.has(parent)) parent = rootMac;
       const children = visibleChildMap.get(parent) || [];
       children.push(node);
       visibleChildMap.set(parent, children);
@@ -129,7 +144,10 @@ export class EspTopologyMap extends LitElement {
             <section class="card">
               <div class="card-header">
                 <h2>${root.friendly_name || root.label || root.esphome_name || 'Bridge'} Topology</h2>
-                <button class="btn" @click=${() => void this.load()}>Refresh</button>
+                <div class="header-actions">
+                  <button class="btn primary" @click=${() => { window.location.hash = '/add-remote'; }}>+ Add Remote</button>
+                  <button class="btn" @click=${() => void this.load()}>Refresh</button>
+                </div>
               </div>
               <div class="card-body">
                 <div class="tree-root">
@@ -224,6 +242,24 @@ export class EspTopologyMap extends LitElement {
     .btn:hover {
       background: #f8fafc;
       border-color: #cbd5e1;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn.primary {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: #0d5f58;
+      border-color: #0d5f58;
     }
 
     .tree-root {
