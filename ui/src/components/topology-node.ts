@@ -183,7 +183,12 @@ export class EspTopologyNode extends LitElement {
     .tree-node {
       width: 100%;
       display: grid;
-      grid-template-columns: 14px 10px minmax(180px, 1fr) 1fr auto auto;
+      /* Fixed trailing tracks keep every box - bridge or remote - on the same
+         column grid. With auto tracks each row sized its own columns, so the
+         bridge (which has no OTA/action cells) never aligned with a remote. The
+         trailing widths fit the widest remote content: the Settings button, and
+         the Edit YAML + Remove pair. */
+      grid-template-columns: 14px 10px minmax(180px, 1fr) minmax(0, 1fr) 120px 190px;
       gap: 12px;
       align-items: center;
       border: 1px solid var(--line);
@@ -347,7 +352,9 @@ export class EspTopologyNode extends LitElement {
 
     .metrics {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
+      min-width: 0;
       font-size: 12px;
       color: var(--muted);
       justify-content: flex-end;

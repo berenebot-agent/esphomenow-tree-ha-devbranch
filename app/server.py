@@ -1941,9 +1941,21 @@ def create_app() -> FastAPI:
             return {"provisioning": False}
         esphome_name = str(dev.get("esphome_name") or "")
         active_job = db.active_job_for_device(nm)
-        compile_status_dict = {}
+        compile_status_dict: dict[str, Any] = {}
         if active_job:
             compile_status_dict = {"status": active_job["status"], "percent": active_job.get("percent")}
+        else:
+            # active_job_for_device only returns non-terminal jobs, so once a build
+            # finishes this endpoint would otherwise report "idle" forever and any
+            # client polling it (rather than the device compile-status endpoint)
+            # could never learn that it succeeded or failed. Surface the latest
+            # terminal compile result instead.
+            latest_compile = db.get_latest_compile_job_for_device(nm)
+            if latest_compile and latest_compile["status"] in (COMPILE_SUCCESS, FAILED):
+                compile_status_dict = {
+                    "status": latest_compile["status"],
+                    "percent": 100 if latest_compile["status"] == COMPILE_SUCCESS else 0,
+                }
         serial_status = {}
         if esphome_name:
             serial_status = compiler.serial_flash_status(esphome_name) or {}
@@ -1963,6 +1975,7 @@ def create_app() -> FastAPI:
             "transport": "espnow",
             "serial_port": "",
             "compile_status": compile_status_dict.get("status", "idle"),
+            "percent": compile_status_dict.get("percent", 0),
             "serial_flash_status": serial_status.get("status", "idle"),
             "bridge_detected": remote_detected,
             "remote_detected": remote_detected,
@@ -2238,7 +2251,7 @@ def create_app() -> FastAPI:
                     "parent_mac": bridge_mac,
                     "online": False,
                     "hops": int(remote.get("hops") or 0),
-                    "offline_reason": "not seen by bridge",
+                    "offline_reason": "not seen",
                     "offline_started_at": None,
                     "entity_count": int(remote.get("entity_count") or 0),
                     "chip_name": "",

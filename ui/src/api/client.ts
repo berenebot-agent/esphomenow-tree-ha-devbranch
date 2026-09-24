@@ -264,6 +264,7 @@ export interface FlashWizardStatus {
   serial_port?: string;
   compile_status?: string;
   serial_flash_status?: string;
+  percent?: number;
   bridge_detected?: boolean;
   remote_detected?: boolean;
   detected_bridge?: { host: string; port: number; name: string } | null;

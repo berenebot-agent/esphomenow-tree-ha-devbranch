@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ChipInfo, api } from '../api/client';
+import '../components/compile-log-viewer';
 
 /**
  * Create Remote wizard.
@@ -41,6 +42,7 @@ export class EspRemoteWizard extends LitElement {
   @state() private mac = '';
   @state() private esphomeName = '';
   @state() private compilePercent = 0;
+  @state() private compileStatus = '';
 
   @state() private manifestUrl = '';
   @state() private firmwareBlobUrl = '';
@@ -192,6 +194,7 @@ export class EspRemoteWizard extends LitElement {
     this.error = '';
     this.stage = 'compiling';
     this.compilePercent = 0;
+    this.compileStatus = '';
     try {
       const res = await api.submitFlashWizard({
         name: this.name.trim(),
@@ -228,26 +231,45 @@ export class EspRemoteWizard extends LitElement {
   }
 
   private async pollCompile(): Promise<void> {
+    if (!this.mac) return;
     try {
-      const status = await api.getFlashWizardStatus();
-      const compile = status.compile_status ?? 'idle';
-      if (typeof (status as { percent?: number }).percent === 'number') {
-        this.compilePercent = (status as { percent?: number }).percent as number;
-      }
-      if (compile === 'compile_success' || compile === 'success') {
+      // Use the per-device compile status, not the flash-wizard status: the latter
+      // reports only *active* jobs and drops back to "idle" the instant a build
+      // reaches its terminal state, so the wizard would wait forever.
+      const status = await api.getCompileStatus(this.mac);
+      const state = status.status || 'idle';
+      this.compileStatus = state;
+      if (state === 'compiled') {
+        this.compilePercent = 100;
         this.clearPoll();
         this.stage = 'ready';
         void this.prepareManifest();
         return;
       }
-      if (['failed', 'compile_failed', 'aborted', 'rejoin_timeout', 'version_mismatch'].includes(compile)) {
+      if (state === 'failed') {
         this.clearPoll();
-        this.error = `Compile finished as "${compile}" — check the queue page for the build log.`;
+        this.error = status.error || 'Compilation failed';
         this.stage = 'error';
+        return;
+      }
+      if (state === 'compile_queued') {
+        const position = status.queue_position ?? 1;
+        this.compilePercent = Math.max(5, 100 - position * 10);
+      } else if (state === 'compiling') {
+        this.compilePercent = Math.max(this.compilePercent, 10);
+      } else {
+        this.compilePercent = Math.max(this.compilePercent, 2);
       }
     } catch {
       // Keep polling through transient errors.
     }
+  }
+
+  private get compileStatusLabel(): string {
+    const name = this.esphomeName || this.name.trim();
+    if (this.compileStatus === 'compile_queued') return `Queued to compile ${name}`;
+    if (this.compileStatus === 'idle') return `Waiting for the compiler`;
+    return `Compiling ${name}`;
   }
 
   /**
@@ -303,6 +325,16 @@ export class EspRemoteWizard extends LitElement {
     }
     this.clearManifestUrls();
     this.stage = 'done';
+  }
+
+  private startOver(): void {
+    this.clearPoll();
+    this.stage = 'config';
+    this.error = '';
+    this.compileStatus = '';
+    this.compilePercent = 0;
+    this.mac = '';
+    this.esphomeName = '';
   }
 
   private goTopology(): void {
@@ -433,13 +465,14 @@ export class EspRemoteWizard extends LitElement {
                   <div class="spinner"></div>
                   <div>
                     <strong
-                      >Compiling ${this.esphomeName}…${this.compilePercent > 0
+                      >${this.compileStatusLabel}…${this.compilePercent > 0
                         ? ` ${this.compilePercent}%`
                         : ''}</strong
                     >
                     <p class="hint">This uses the add-on's own compiler. It can take a few minutes.</p>
                   </div>
                 </div>
+                <esp-compile-log-viewer .mac=${this.mac} .visible=${true}></esp-compile-log-viewer>
               `
             : nothing}
 
@@ -498,7 +531,7 @@ export class EspRemoteWizard extends LitElement {
 
           ${this.stage === 'error'
             ? html`
-                <button class="btn" @click=${() => { this.stage = 'config'; this.error = ''; }}>Start over</button>
+                <button class="btn" @click=${() => this.startOver()}>Start over</button>
               `
             : nothing}
         </div>
