@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.289")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.290")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1958,11 +1958,18 @@ def create_app() -> FastAPI:
             # for real by the normal topology upsert once it joins the bridge, so
             # keeping the placeholder would leave a permanent fake offline node.
             nm = normalize_mac(REMOTE_PLACEHOLDER_MAC)
-            dev = db.get_device(nm)
-            if dev:
-                db.delete_device(nm)
-                logger.info("flash_wizard_finalize: cleared remote placeholder %s", nm)
-                return {"activated": False, "kind": "remote", "detail": "remote placeholder cleared"}
+            try:
+                dev = db.get_device(nm)
+                if dev:
+                    db.delete_device(nm)
+                    logger.info("flash_wizard_finalize: cleared remote placeholder %s", nm)
+                    return {"activated": False, "kind": "remote", "detail": "remote placeholder cleared"}
+            except Exception:
+                # Cleanup of a cosmetic row must never fail the request: a 500 here
+                # leaves the wizard reporting an error after a successful flash, and
+                # this endpoint is polled. Report the failure instead of raising.
+                logger.exception("flash_wizard_finalize: could not clear remote placeholder %s", nm)
+                return {"activated": False, "kind": "remote", "detail": "placeholder cleanup failed"}
             return {"activated": False, "detail": "no provisioning bridge"}
         activated = await _try_auto_activate_provisioned_bridge()
         return {
