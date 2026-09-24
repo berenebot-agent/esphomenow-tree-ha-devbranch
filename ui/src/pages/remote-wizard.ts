@@ -22,6 +22,9 @@ export class EspRemoteWizard extends LitElement {
   @state() private chips: ChipInfo[] = [];
   @state() private chipName = '';
   @state() private loadingChips = false;
+  @state() private detectingChip = false;
+  @state() private chipDetectionError = '';
+  @state() private detectedChipName = '';
 
   @state() private networkId = '';
   @state() private psk = '';
@@ -64,6 +67,59 @@ export class EspRemoteWizard extends LitElement {
     return Boolean(nav.serial) && window.isSecureContext;
   }
 
+  /** Detect the connected chip from this browser, where the USB device is plugged in. */
+  private async detectChip(): Promise<void> {
+    this.chipDetectionError = '';
+    this.detectedChipName = '';
+    this.detectingChip = true;
+    let transport: any = null;
+
+    try {
+      if (!this.detectUsbSupport()) {
+        throw new Error('USB chip detection requires Chrome or Edge on a secure HTTPS page. You can select the chip manually instead.');
+      }
+      const serial = (navigator as Navigator & {
+        serial?: { requestPort: () => Promise<unknown> };
+      }).serial;
+      if (!serial) throw new Error('Web Serial is not available. Select the chip manually instead.');
+
+      // requestPort must run directly from this click so the browser can show its USB picker.
+      const port = await serial.requestPort();
+      const moduleUrl = 'https://unpkg.com/esptool-js@0.6.1/bundle.js';
+      const esptool = await import(/* @vite-ignore */ moduleUrl);
+      transport = new esptool.Transport(port, true);
+      const loader = new esptool.ESPLoader({
+        transport,
+        baudrate: 115200,
+        terminal: { clean: () => {}, writeLine: () => {}, write: () => {} },
+        debugLogging: false,
+      });
+      const detected = String(await loader.main());
+      const normalized = detected.trim().toUpperCase().replace(/\s+/g, '');
+      const families = ['ESP32-C61', 'ESP32-C6', 'ESP32-C5', 'ESP32-C3', 'ESP32-C2', 'ESP32-H2', 'ESP32-P4', 'ESP32-S3', 'ESP32-S2', 'ESP32'];
+      const family = families.find((candidate) =>
+        normalized.includes(candidate) || normalized.includes(candidate.replace(/-/g, '')),
+      );
+      const supportedChip = family && this.chips.find((chip) => chip.chip_name.toUpperCase() === family);
+      if (!family || !supportedChip) {
+        throw new Error(`Detected ${detected}, but this chip is not in the supported firmware list. Choose a supported chip manually.`);
+      }
+      this.chipName = supportedChip.chip_name;
+      this.detectedChipName = detected;
+    } catch (err) {
+      this.chipDetectionError = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (transport) {
+        try {
+          await transport.disconnect();
+        } catch {
+          // Detection has completed; ignore errors while releasing the serial port.
+        }
+      }
+      this.detectingChip = false;
+    }
+  }
+
   private clearPoll(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
@@ -88,10 +144,6 @@ export class EspRemoteWizard extends LitElement {
     try {
       const res = await api.getChips();
       this.chips = res.chips ?? [];
-      if (!this.chipName && this.chips.length > 0) {
-        const preferred = this.chips.find((c) => c.chip_name === 'ESP32-C6') ?? this.chips[0];
-        this.chipName = preferred.chip_name;
-      }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -299,22 +351,39 @@ export class EspRemoteWizard extends LitElement {
                   <span>Chip</span>
                   <select
                     .value=${this.chipName}
-                    @change=${(e: Event) => { this.chipName = (e.target as HTMLSelectElement).value; }}
+                    @change=${(e: Event) => {
+                      this.chipName = (e.target as HTMLSelectElement).value;
+                      this.detectedChipName = '';
+                    }}
                     ?disabled=${this.loadingChips || this.chips.length === 0}
                   >
                     ${this.loadingChips
                       ? html`<option value="">Loading chips…</option>`
-                      : this.chips.map(
-                          (c) => html`<option value=${c.chip_name} ?selected=${c.chip_name === this.chipName}>
+                      : html`<option value="">Select a chip…</option>`
+                    }
+                    ${this.chips.map(
+                      (c) => html`<option value=${c.chip_name} ?selected=${c.chip_name === this.chipName}>
                             ${c.chip_name} — ${c.board}
                           </option>`,
-                        )}
+                    )}
                   </select>
-                  <small class="hint"
-                    >A browser cannot read the chip over USB, so pick it explicitly. Flashing the
-                    wrong one fails safely.</small
-                  >
+                  <small class="hint">Connect the remote to this computer by USB, then detect the chip automatically or select it manually.</small>
                 </label>
+
+                <div class="chip-detect">
+                  <button class="btn" ?disabled=${this.detectingChip || this.loadingChips} @click=${() => void this.detectChip()}>
+                    ${this.detectingChip ? 'Detecting chip…' : 'Detect connected chip'}
+                  </button>
+                  ${this.detectedChipName
+                    ? html`<span class="hint">Detected ${this.detectedChipName}; selected ${this.chipName}.</span>`
+                    : nothing}
+                  ${this.chipDetectionError
+                    ? html`<span class="hint warn-text">${this.chipDetectionError}</span>`
+                    : nothing}
+                  ${!this.usbSupported
+                    ? html`<span class="hint">Automatic detection needs Chrome or Edge on a secure HTTPS page. Manual chip selection is available.</span>`
+                    : nothing}
+                </div>
 
                 <div class="creds ${this.credentialsComplete ? 'ok' : 'warn'}">
                   <div class="creds-row">
@@ -474,6 +543,13 @@ export class EspRemoteWizard extends LitElement {
       font-size: 13px;
       font-weight: 500;
       color: var(--ink, #0f172a);
+    }
+
+    .chip-detect {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
     }
 
     input,

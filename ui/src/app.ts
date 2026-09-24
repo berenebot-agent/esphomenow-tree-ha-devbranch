@@ -172,10 +172,6 @@ export class EspnowApp extends LitElement {
       return html`<esp-setup-wizard></esp-setup-wizard>`;
     }
 
-    if (this.route.name === 'remote-wizard') {
-      return html`<esp-remote-wizard></esp-remote-wizard>`;
-    }
-
     const q = this.queueData;
     const cq = this.compileData;
     const queueCount = q?.count ?? 0;
@@ -196,7 +192,7 @@ export class EspnowApp extends LitElement {
           </div>
           <div class="header-right">
             <nav>
-              <button class=${this.route.name === 'topology' ? 'active' : ''} @click=${() => this.navigate('/')}>Topology</button>
+              <button class=${this.route.name === 'topology' || this.route.name === 'remote-wizard' ? 'active' : ''} @click=${() => this.navigate('/')}>Topology</button>
               <button class=${this.route.name === 'queue' ? 'active' : ''} @click=${() => this.navigate('/queue')}>
                 Queue${showBadge ? html`<span class="badge ${hasCompileActive || hasActive ? 'loading' : ''}">${paused ? '\u23F8 ' : ''}${queueCount + compileCount + (hasActive ? 1 : 0)}</span>` : nothing}
               </button>
@@ -205,7 +201,9 @@ export class EspnowApp extends LitElement {
           </div>
         </header>
         <main>
-          ${this.route.name === 'topology'
+          ${this.route.name === 'remote-wizard'
+            ? html`<esp-remote-wizard></esp-remote-wizard>`
+            : this.route.name === 'topology'
             ? html`<esp-topology-map @node-selected=${(event: CustomEvent<string>) => this.navigate(`/device/${encodeURIComponent(event.detail)}`)}></esp-topology-map>`
             : this.route.name === 'device'
               ? html`<esp-device-detail .mac=${this.route.mac}></esp-device-detail>`
