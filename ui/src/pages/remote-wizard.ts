@@ -1,49 +1,65 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { SerialPortInfo, api } from '../api/client';
+import { ChipInfo, api } from '../api/client';
 
 /**
  * Create Remote wizard.
  *
- * Flashes a brand-new ESP-NOW remote. Deliberately separate from
- * `setup-page.ts`: that wizard owns bridge provisioning (a bridges row, WiFi
- * credentials, a serial client), which a remote must not have. Reusing it would
- * mean threading a device-kind flag through every bridge-only branch.
+ * Flashes a brand-new ESP-NOW remote entirely in the browser: the add-on compiles
+ * the firmware, then esp-web-tools writes it over Web Serial from the user's own
+ * machine. No add-on serial port is involved, so this works when the remote is
+ * plugged into the computer rather than the HA host.
  *
- * The remote shares the bridge's ESP-NOW network credentials, so those are
- * prefilled from secrets.yaml rather than asked for again.
+ * Deliberately separate from `setup-page.ts`: that wizard owns bridge provisioning
+ * (a bridges row, WiFi credentials, a serial client), which a remote must not have.
+ *
+ * ESP-NOW credentials are read from the configured bridge rather than typed here,
+ * because a remote whose network id/PSK differ from the bridge's simply cannot join.
  */
 @customElement('esp-remote-wizard')
 export class EspRemoteWizard extends LitElement {
   @state() private name = 'espnow-remote';
+  @state() private chips: ChipInfo[] = [];
+  @state() private chipName = '';
+  @state() private loadingChips = false;
+
   @state() private networkId = '';
   @state() private psk = '';
-  @state() private ports: SerialPortInfo[] = [];
-  @state() private selectedPort = '';
-  @state() private scanningPorts = false;
-  @state() private chipName = '';
-  @state() private boardInfo: Record<string, string> | null = null;
-  @state() private detecting = false;
+  @state() private bridgeName = '';
+  @state() private credentialsComplete = false;
+  @state() private networkIdSource = '';
+  @state() private pskSource = '';
+  @state() private loadingCredentials = false;
 
   @state() private stage: 'config' | 'compiling' | 'ready' | 'flashing' | 'done' | 'error' = 'config';
   @state() private error = '';
   @state() private mac = '';
   @state() private esphomeName = '';
   @state() private compilePercent = 0;
-  @state() private flashStatus = '';
-  @state() private flashLog: string[] = [];
-  @state() private secretsLoaded = false;
+
+  @state() private manifestUrl = '';
+  @state() private firmwareBlobUrl = '';
+  @state() private preparingManifest = false;
+  @state() private usbSupported = true;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.loadDefaults();
+    this.usbSupported = this.detectUsbSupport();
+    void this.loadChips();
+    void this.loadCredentials();
   }
 
   disconnectedCallback(): void {
     this.clearPoll();
+    this.clearManifestUrls();
     super.disconnectedCallback();
+  }
+
+  private detectUsbSupport(): boolean {
+    const nav = navigator as Navigator & { serial?: unknown };
+    return Boolean(nav.serial) && window.isSecureContext;
   }
 
   private clearPoll(): void {
@@ -53,63 +69,70 @@ export class EspRemoteWizard extends LitElement {
     }
   }
 
-  /** Prefill the shared ESP-NOW network id/psk from secrets.yaml. */
-  private async loadDefaults(): Promise<void> {
-    try {
-      const { content } = await api.getSecrets();
-      const pick = (key: string): string => {
-        const m = content.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, 'm'));
-        return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
-      };
-      this.networkId = this.networkId || pick('espnow_network_id');
-      this.psk = this.psk || pick('espnow_psk');
-      this.secretsLoaded = true;
-    } catch {
-      // Not fatal: the user can type them.
+  /** esp-web-tools holds this URL until it flashes; revoke to avoid a leak. */
+  private clearManifestUrls(): void {
+    if (this.manifestUrl) {
+      URL.revokeObjectURL(this.manifestUrl);
+      this.manifestUrl = '';
+    }
+    if (this.firmwareBlobUrl) {
+      URL.revokeObjectURL(this.firmwareBlobUrl);
+      this.firmwareBlobUrl = '';
     }
   }
 
-  private async scanPorts(): Promise<void> {
-    this.scanningPorts = true;
+  private async loadChips(): Promise<void> {
+    this.loadingChips = true;
     try {
-      const res = await api.getSerialPorts();
-      this.ports = res.ports ?? [];
-      const usable = this.ports.filter((p) => p.available);
-      if (!this.selectedPort && usable.length > 0) this.selectedPort = usable[0].port;
-    } catch (err) {
-      this.error = err instanceof Error ? err.message : String(err);
-    } finally {
-      this.scanningPorts = false;
-    }
-  }
-
-  private async detectChip(): Promise<void> {
-    if (!this.selectedPort) return;
-    this.detecting = true;
-    this.error = '';
-    try {
-      const res = await api.detectChip(this.selectedPort);
-      if (res.error || !res.board_info) {
-        this.chipName = res.chip_name || 'unknown';
-        this.boardInfo = null;
-        this.error = res.error || `chip '${res.chip_name}' is not a supported board`;
-        return;
+      const res = await api.getChips();
+      this.chips = res.chips ?? [];
+      if (!this.chipName && this.chips.length > 0) {
+        const preferred = this.chips.find((c) => c.chip_name === 'ESP32-C6') ?? this.chips[0];
+        this.chipName = preferred.chip_name;
       }
-      this.chipName = res.chip_name;
-      this.boardInfo = res.board_info;
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
-      this.detecting = false;
+      this.loadingChips = false;
     }
+  }
+
+  /** Credentials come from the configured bridge, not from user input. */
+  private async loadCredentials(): Promise<void> {
+    this.loadingCredentials = true;
+    try {
+      const res = await api.getBridgeNetworkCredentials();
+      this.networkId = res.network_id ?? '';
+      this.psk = res.psk ?? '';
+      this.bridgeName = res.bridge_name ?? '';
+      this.credentialsComplete = Boolean(res.complete);
+      this.networkIdSource = res.network_id_source ?? '';
+      this.pskSource = res.psk_source ?? '';
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.loadingCredentials = false;
+    }
+  }
+
+  private get selectedChip(): ChipInfo | undefined {
+    return this.chips.find((c) => c.chip_name === this.chipName);
+  }
+
+  private get chipFamily(): string | null {
+    // The registry keys are already esp-web-tools families (ESP32-C6 etc).
+    return this.chipName || null;
   }
 
   private canSubmit(): boolean {
-    return Boolean(this.name.trim() && this.boardInfo && this.chipName && this.networkId.trim() && this.psk.trim());
+    return Boolean(
+      this.name.trim() && this.chipName && this.selectedChip && this.networkId.trim() && this.psk.trim(),
+    );
   }
 
   private async submit(): Promise<void> {
-    if (!this.canSubmit() || !this.boardInfo) return;
+    const chip = this.selectedChip;
+    if (!this.canSubmit() || !chip) return;
     this.error = '';
     this.stage = 'compiling';
     this.compilePercent = 0;
@@ -125,7 +148,7 @@ export class EspRemoteWizard extends LitElement {
         espnow_mode: 'lr',
         ota_password: '',
         chip_name: this.chipName,
-        board_info: this.boardInfo,
+        board_info: { platform: chip.platform, board: chip.board, framework: chip.framework },
         transport: 'espnow',
         kind: 'remote',
       });
@@ -150,14 +173,13 @@ export class EspRemoteWizard extends LitElement {
     try {
       const status = await api.getFlashWizardStatus();
       const compile = status.compile_status ?? 'idle';
-      // Percent is not always reported by the compile job; keep the last known
-      // value rather than resetting it to 0 on every poll.
       if (typeof (status as { percent?: number }).percent === 'number') {
         this.compilePercent = (status as { percent?: number }).percent as number;
       }
       if (compile === 'compile_success' || compile === 'success') {
         this.clearPoll();
         this.stage = 'ready';
+        void this.prepareManifest();
         return;
       }
       if (['failed', 'compile_failed', 'aborted', 'rejoin_timeout', 'version_mismatch'].includes(compile)) {
@@ -170,48 +192,58 @@ export class EspRemoteWizard extends LitElement {
     }
   }
 
-  private async startFlash(): Promise<void> {
-    if (!this.selectedPort || !this.mac) return;
-    this.stage = 'flashing';
-    this.flashStatus = 'starting';
-    this.flashLog = [];
+  /**
+   * Hand esp-web-tools the compiled factory image.
+   *
+   * The factory .bin is the full merged image (bootloader + partitions + app), which
+   * is what a blank device needs; the .ota.bin is an update image and cannot be
+   * flashed to empty flash. The manifest must be a blob URL because the ingress path
+   * is not a stable absolute URL for the component to fetch back.
+   */
+  private async prepareManifest(): Promise<void> {
+    if (!this.mac) return;
+    const chipFamily = this.chipFamily;
+    if (!chipFamily) {
+      this.error = 'Could not determine the chip family for browser flashing.';
+      return;
+    }
+    this.preparingManifest = true;
     try {
-      // Flashing targets the compiled config, which is keyed by esphome_name, so
-      // the synthetic placeholder MAC from submit is the correct handle here.
-      await api.startSerialFlash(this.mac, this.selectedPort);
-      const es = api.streamSerialFlashLogs(
-        this.mac,
-        (line) => {
-          this.flashLog = [...this.flashLog.slice(-200), line];
-        },
-        (status) => {
-          this.flashStatus = status;
-          if (status === 'success') {
-            void this.finish();
-          } else if (status === 'failed') {
-            this.error = 'Serial flash failed — see the log below.';
-            this.stage = 'error';
-            es.close();
-          }
-        },
-        () => {
-          /* stream errors are non-fatal; status polling still applies */
-        },
+      const resp = await fetch(api.downloadFactoryBinary(this.mac));
+      if (!resp.ok) {
+        this.error =
+          'Compiled, but no factory image is available for browser flashing. Check the queue page for the build log.';
+        return;
+      }
+      const firmwareBlobUrl = URL.createObjectURL(await resp.blob());
+      const manifest = {
+        name: this.esphomeName || this.name.trim(),
+        version: 'compiled',
+        new_install_prompt_erase: true,
+        builds: [{ chipFamily, parts: [{ path: firmwareBlobUrl, offset: 0 }] }],
+      };
+      const manifestUrl = URL.createObjectURL(
+        new Blob([JSON.stringify(manifest)], { type: 'application/json' }),
       );
+      this.clearManifestUrls();
+      this.manifestUrl = manifestUrl;
+      this.firmwareBlobUrl = firmwareBlobUrl;
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
-      this.stage = 'error';
+    } finally {
+      this.preparingManifest = false;
     }
   }
 
-  /** Clear the synthetic placeholder; the real node appears once it joins. */
-  private async finish(): Promise<void> {
+  /** esp-web-tools has finished writing the firmware. */
+  private async onBrowserFlashDone(): Promise<void> {
     this.clearPoll();
     try {
       await api.finalizeFlashWizard();
     } catch {
       // The placeholder is cosmetic; the remote is added by topology upsert.
     }
+    this.clearManifestUrls();
     this.stage = 'done';
   }
 
@@ -219,8 +251,18 @@ export class EspRemoteWizard extends LitElement {
     window.location.hash = '/';
   }
 
+  private credentialsLabel(): string {
+    if (this.loadingCredentials) return 'loading…';
+    if (!this.credentialsComplete) return 'not configured';
+    return this.bridgeName ? `from bridge ${this.bridgeName}` : 'from secrets.yaml';
+  }
+
+  private sourceLabel(source: string): string {
+    if (!source || source === 'missing') return 'missing';
+    return `from ${source}`;
+  }
+
   render() {
-    const usablePorts = this.ports.filter((p) => p.available);
     return html`
       <section class="card">
         <div class="card-header">
@@ -233,8 +275,9 @@ export class EspRemoteWizard extends LitElement {
           ${this.stage === 'config'
             ? html`
                 <p class="hint">
-                  Flashes a new ESP-NOW remote. It joins the bridge's network, so it uses the same
-                  network ID and PSK as the bridge.
+                  Flashes a new ESP-NOW remote from this browser. Plug the remote into
+                  <strong>this computer</strong> by USB — the add-on compiles the firmware, then
+                  your browser writes it.
                 </p>
 
                 <label class="field">
@@ -247,49 +290,54 @@ export class EspRemoteWizard extends LitElement {
                 </label>
 
                 <label class="field">
-                  <span>Serial port</span>
-                  <div class="row">
-                    <select
-                      .value=${this.selectedPort}
-                      @change=${(e: Event) => { this.selectedPort = (e.target as HTMLSelectElement).value; }}
-                    >
-                      <option value="">— select a port —</option>
-                      ${usablePorts.map(
-                        (p) => html`<option value=${p.port} ?selected=${p.port === this.selectedPort}>${p.label || p.port}</option>`,
-                      )}
-                    </select>
-                    <button class="btn" ?disabled=${this.scanningPorts} @click=${() => void this.scanPorts()}>
-                      ${this.scanningPorts ? 'Scanning…' : 'Scan ports'}
-                    </button>
-                    <button class="btn" ?disabled=${this.detecting || !this.selectedPort} @click=${() => void this.detectChip()}>
-                      ${this.detecting ? 'Detecting…' : 'Detect chip'}
-                    </button>
-                  </div>
-                  ${this.chipName
-                    ? html`<small class="ok-note">Detected: ${this.chipName}${this.boardInfo ? ` (${this.boardInfo.board})` : ''}</small>`
-                    : nothing}
+                  <span>Chip</span>
+                  <select
+                    .value=${this.chipName}
+                    @change=${(e: Event) => { this.chipName = (e.target as HTMLSelectElement).value; }}
+                    ?disabled=${this.loadingChips || this.chips.length === 0}
+                  >
+                    ${this.loadingChips
+                      ? html`<option value="">Loading chips…</option>`
+                      : this.chips.map(
+                          (c) => html`<option value=${c.chip_name} ?selected=${c.chip_name === this.chipName}>
+                            ${c.chip_name} — ${c.board}
+                          </option>`,
+                        )}
+                  </select>
+                  <small class="hint"
+                    >A browser cannot read the chip over USB, so pick it explicitly. Flashing the
+                    wrong one fails safely.</small
+                  >
                 </label>
 
-                <details class="advanced" ?open=${!this.secretsLoaded}>
-                  <summary>Network credentials</summary>
-                  <label class="field">
-                    <span>Network ID</span>
-                    <input
-                      type="text"
-                      .value=${this.networkId}
-                      @input=${(e: Event) => { this.networkId = (e.target as HTMLInputElement).value; }}
-                    />
-                  </label>
-                  <label class="field">
-                    <span>ESP-NOW PSK</span>
-                    <input
-                      type="text"
-                      .value=${this.psk}
-                      @input=${(e: Event) => { this.psk = (e.target as HTMLInputElement).value; }}
-                    />
-                  </label>
-                  <p class="hint">Prefilled from secrets.yaml — must match the bridge or the remote cannot join.</p>
-                </details>
+                <div class="creds ${this.credentialsComplete ? 'ok' : 'warn'}">
+                  <div class="creds-row">
+                    <strong>Network</strong>
+                    <span>${this.credentialsLabel()}</span>
+                  </div>
+                  ${this.credentialsComplete
+                    ? html`<div class="creds-row">
+                          <span>Network ID <small class="src">${this.sourceLabel(this.networkIdSource)}</small></span>
+                          <code>${this.networkId}</code>
+                        </div>
+                        <div class="creds-row">
+                          <span>PSK <small class="src">${this.sourceLabel(this.pskSource)}</small></span>
+                          <code>••••••••</code>
+                        </div>`
+                    : html`<p class="hint">
+                        No ESP-NOW credentials found${this.bridgeName
+                          ? html` for bridge <strong>${this.bridgeName}</strong>`
+                          : nothing}.
+                        A remote cannot join without them — configure a bridge first, or add
+                        <code>espnow_network_id</code> and <code>espnow_psk</code> to secrets.yaml.
+                      </p>`}
+                  ${this.credentialsComplete
+                    ? html`<p class="hint">
+                        Taken from the active bridge so the remote matches it. Edit secrets.yaml to
+                        change.
+                      </p>`
+                    : nothing}
+                </div>
 
                 <button class="btn primary" ?disabled=${!this.canSubmit()} @click=${() => void this.submit()}>
                   Compile firmware
@@ -302,7 +350,11 @@ export class EspRemoteWizard extends LitElement {
                 <div class="status">
                   <div class="spinner"></div>
                   <div>
-                    <strong>Compiling ${this.esphomeName}…${this.compilePercent > 0 ? ` ${this.compilePercent}%` : ''}</strong>
+                    <strong
+                      >Compiling ${this.esphomeName}…${this.compilePercent > 0
+                        ? ` ${this.compilePercent}%`
+                        : ''}</strong
+                    >
                     <p class="hint">This uses the add-on's own compiler. It can take a few minutes.</p>
                   </div>
                 </div>
@@ -313,25 +365,39 @@ export class EspRemoteWizard extends LitElement {
             ? html`
                 <div class="status">
                   <strong>Firmware compiled.</strong>
-                  <p class="hint">Connect the remote over USB and flash it now.</p>
+                  <p class="hint">Plug the remote into this computer by USB, then flash it below.</p>
                 </div>
-                <button class="btn primary" ?disabled=${!this.selectedPort} @click=${() => void this.startFlash()}>
-                  Flash over serial
-                </button>
-                ${!this.selectedPort ? html`<p class="hint">Select a serial port first.</p>` : nothing}
-              `
-            : nothing}
-
-          ${this.stage === 'flashing'
-            ? html`
-                <div class="status">
-                  <div class="spinner"></div>
-                  <div>
-                    <strong>Flashing ${this.esphomeName}…</strong>
-                    <p class="hint">Status: ${this.flashStatus}</p>
-                  </div>
+                ${this.preparingManifest
+                  ? html`<div class="status"><div class="spinner"></div><span>Preparing firmware…</span></div>`
+                  : nothing}
+                ${this.manifestUrl
+                  ? html`
+                      <esp-web-install-button manifest=${this.manifestUrl} @state-changed=${(e: Event) => {
+                        const detail = (e as CustomEvent<{ state: string }>).detail;
+                        if (detail?.state === 'FINISHED') void this.onBrowserFlashDone();
+                      }}>
+                        <button slot="activate" class="btn primary">Flash via Browser USB</button>
+                        <span slot="unsupported"
+                          >Open this page in Chrome or Edge over HTTPS to use browser USB flashing.</span
+                        >
+                        <span slot="not-allowed">Browser USB flashing requires a secure HTTPS page.</span>
+                      </esp-web-install-button>
+                    `
+                  : nothing}
+                ${!this.usbSupported
+                  ? html`<div class="error">
+                      This browser cannot flash over USB. Open the add-on in Chrome or Edge over HTTPS.
+                    </div>`
+                  : nothing}
+                <div class="actions">
+                  <button class="btn" @click=${() => void this.onBrowserFlashDone()}>
+                    I've flashed it
+                  </button>
                 </div>
-                <pre class="log">${this.flashLog.join('\n')}</pre>
+                <p class="hint">
+                  The button above writes the firmware from this computer. If your browser cannot,
+                  use the compiled .bin with your own tool, then continue.
+                </p>
               `
             : nothing}
 
@@ -340,8 +406,8 @@ export class EspRemoteWizard extends LitElement {
                 <div class="status ok">
                   <strong>${this.esphomeName} flashed.</strong>
                   <p class="hint">
-                    Power the remote. Once it joins, the bridge reports it and it appears in the topology
-                    view automatically.
+                    Power the remote. Once it joins, the bridge reports it and it appears in the
+                    topology view automatically.
                   </p>
                 </div>
                 <button class="btn primary" @click=${this.goTopology}>Go to topology</button>
@@ -397,12 +463,6 @@ export class EspRemoteWizard extends LitElement {
       color: var(--ink, #0f172a);
     }
 
-    .row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
     input,
     select {
       font: inherit;
@@ -413,6 +473,50 @@ export class EspRemoteWizard extends LitElement {
       background: #fff;
       color: var(--ink, #0f172a);
       min-width: 180px;
+    }
+
+    .creds {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .creds.ok {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+
+    .creds.warn {
+      border-color: #fed7aa;
+      background: #fffbeb;
+    }
+
+    .creds-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .creds-row code {
+      font-size: 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 6px;
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .src {
+      color: var(--muted, #64748b);
+      font-size: 11px;
     }
 
     .btn {
@@ -459,11 +563,6 @@ export class EspRemoteWizard extends LitElement {
       line-height: 1.5;
     }
 
-    .ok-note {
-      color: var(--ok, #15803d);
-      font-weight: 500;
-    }
-
     .error {
       background: #fef2f2;
       border: 1px solid var(--danger, #dc2626);
@@ -479,6 +578,12 @@ export class EspRemoteWizard extends LitElement {
       align-items: flex-start;
       gap: 12px;
       font-size: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .status.ok strong {
@@ -500,35 +605,6 @@ export class EspRemoteWizard extends LitElement {
       to {
         transform: rotate(360deg);
       }
-    }
-
-    .log {
-      background: #0f172a;
-      color: #e2e8f0;
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 12px;
-      max-height: 280px;
-      overflow: auto;
-      white-space: pre-wrap;
-      margin: 0;
-    }
-
-    .advanced summary {
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--ink, #0f172a);
-      margin-bottom: 10px;
-    }
-
-    .advanced {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
     }
   `;
 }

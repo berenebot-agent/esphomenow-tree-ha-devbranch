@@ -160,6 +160,28 @@ def main() -> int:
         _n = _c.execute("SELECT COUNT(*) c FROM ota_jobs WHERE mac=?", (_nm,)).fetchone()["c"]
     check("child ota_jobs rows gone too (no orphan/FK error)", _n == 0)
 
+    # 11. A remote must never be written with blank ESP-NOW credentials: firmware
+    #     with an empty network_id/psk compiles fine but can never join, which is
+    #     much harder to diagnose than a rejected request. The submit path must fall
+    #     back to the active bridge's network_id and the secrets.yaml psk.
+    import re as _re
+    _srv = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "app", "server.py")).read()
+    check("submit falls back to the active bridge network_id for remotes",
+          "active_bridge.get(\"network_id\")" in _srv)
+    check("submit falls back to secrets.yaml for the remote PSK",
+          '_secret_from_secrets_yaml("espnow_psk")' in _srv)
+    check("submit rejects a remote with no credentials at all",
+          "no ESP-NOW credentials available for this remote" in _srv)
+    check("there is a bridge network-credentials endpoint",
+          '"/api/bridge/network-credentials"' in _srv)
+    check("network-credentials reports its source (so the UI can explain)",
+          '"network_id_source"' in _srv and '"psk_source"' in _srv)
+    check("there is a chips endpoint (UI must not hardcode the board map)",
+          '"/api/chips"' in _srv and "CHIP_NAME_TO_BOARD" in _srv)
+    check("chip registry is imported by the server",
+          "from .compiler import CHIP_NAME_TO_BOARD, ESPHomeCompiler" in _srv)
+
     print("=" * 70)
     passed = 0
     for name, ok, detail in RESULTS:

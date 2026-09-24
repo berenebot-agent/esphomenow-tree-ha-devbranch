@@ -211,6 +211,14 @@ export interface DiscoverBridgesResponse {
   scanning: boolean;
 }
 
+export interface ChipInfo {
+  chip_name: string;
+  platform: string;
+  board: string;
+  framework: string;
+  variant?: string;
+}
+
 export interface ConfiguredBridge {
   uuid: string;
   name: string;
@@ -538,6 +546,24 @@ export const api = {
   },
 
   getSecrets: () => request<{ content: string }>('/api/secrets'),
+
+  /** Chips the compiler supports, so the wizard never hardcodes the board map. */
+  getChips: () => request<{ chips: ChipInfo[] }>('/api/chips'),
+
+  /**
+   * ESP-NOW credentials a new remote must share with the bridge. Resolved from the
+   * active bridge + secrets.yaml; a mismatched pair cannot join the network.
+   */
+  getBridgeNetworkCredentials: () =>
+    request<{
+      network_id: string;
+      psk: string;
+      bridge_name: string;
+      bridge_uuid: string;
+      network_id_source: string;
+      psk_source: string;
+      complete: boolean;
+    }>('/api/bridge/network-credentials'),
   saveSecrets: (content: string) => request<{ content: string; saved: boolean }>('/api/secrets', {
     method: 'PUT',
     body: JSON.stringify({ content })

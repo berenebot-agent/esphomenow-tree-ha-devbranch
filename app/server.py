@@ -29,7 +29,7 @@ from .bridge_constants import API_VERSION, CLIENT_KIND, PROTOCOL
 from .bridge_v2_client import BridgeV2Manager
 from .network_discovery import NetworkDiscovery
 from .compile_store import CompileStore
-from .compiler import ESPHomeCompiler
+from .compiler import CHIP_NAME_TO_BOARD, ESPHomeCompiler
 from .config import _int_option, _read_options, load_settings
 from .db import Database
 from .firmware_store import FirmwareStore
@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.292")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.293")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1759,6 +1759,25 @@ def create_app() -> FastAPI:
             "espnow_network_id": body.network_id,
             "espnow_psk": body.psk,
         }
+        if is_remote:
+            # A remote must end up on the same ESP-NOW network as the bridge, so if
+            # the caller left either half empty, fall back to the configured values
+            # rather than writing a blank secret. A blank one produces firmware that
+            # compiles but can never join, which is far harder to diagnose.
+            active_bridge = db.get_active_bridge() or {}
+            if not secrets_to_merge["espnow_network_id"]:
+                secrets_to_merge["espnow_network_id"] = str(active_bridge.get("network_id") or "").strip()
+            if not secrets_to_merge["espnow_psk"]:
+                secrets_to_merge["espnow_psk"] = _secret_from_secrets_yaml("espnow_psk")
+            missing = [k for k, v in secrets_to_merge.items() if not v]
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "no ESP-NOW credentials available for this remote "
+                        f"({', '.join(missing)}). Configure a bridge first, or add them to secrets.yaml."
+                    ),
+                )
         if not is_remote:
             secrets_to_merge["bridge_api_key"] = api_key
             secrets_to_merge["ota_password"] = ota_password
@@ -2200,6 +2219,19 @@ def create_app() -> FastAPI:
                 }
             )
         return nodes
+
+    def _secret_from_secrets_yaml(key: str) -> str:
+        """Read one key from secrets.yaml, tolerating quotes and a missing file."""
+        import re as _re
+
+        try:
+            text = yaml_store.get_secrets() or ""
+        except Exception:
+            return ""
+        match = _re.search(rf"^\s*{_re.escape(key)}\s*:\s*(.+)$", text, _re.MULTILINE)
+        if not match:
+            return ""
+        return match.group(1).strip().strip("\"'")
 
     async def _retained_remotes() -> list[dict[str, Any]]:
         """Remotes the integration still holds, including offline/retained ones.
@@ -3003,6 +3035,48 @@ def create_app() -> FastAPI:
         raise HTTPException(status_code=404, detail="no compile job found for this device")
 
     # ── Secrets ──
+
+    @app.get("/api/chips")
+    async def chips_list() -> dict[str, Any]:
+        """Supported chips and their ESPHome board mapping.
+
+        The browser cannot detect a chip over Web Serial without flashing, so the
+        wizard picks from this list. Serving it keeps the mapping in one place -
+        duplicating CHIP_NAME_TO_BOARD in the UI would drift from the compiler.
+        """
+        return {
+            "chips": [
+                {"chip_name": chip, **info}
+                for chip, info in sorted(CHIP_NAME_TO_BOARD.items())
+            ]
+        }
+
+    @app.get("/api/bridge/network-credentials")
+    async def bridge_network_credentials() -> dict[str, Any]:
+        """ESP-NOW credentials a new remote must share to join the network.
+
+        network_id comes from the active bridge row (the authoritative value for
+        the configured network); the PSK is only in secrets.yaml. A remote with a
+        mismatched pair cannot join, so both are resolved server-side and reported
+        with their source so the wizard can explain where they came from and
+        whether they are actually usable.
+        """
+        active = db.get_active_bridge() or {}
+        network_id = str(active.get("network_id") or "").strip()
+
+        if not network_id:
+            network_id = _secret_from_secrets_yaml("espnow_network_id")
+        psk = _secret_from_secrets_yaml("espnow_psk")
+
+        return {
+            "network_id": network_id,
+            "psk": psk,
+            "bridge_name": active.get("name") or "",
+            "bridge_uuid": active.get("uuid") or "",
+            "network_id_source": "active bridge" if active.get("network_id") else ("secrets.yaml" if network_id else "missing"),
+            "psk_source": "secrets.yaml" if psk else "missing",
+            "complete": bool(network_id and psk),
+        }
 
     @app.get("/api/secrets")
     async def secrets_get() -> dict[str, Any]:
