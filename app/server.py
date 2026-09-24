@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.291")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.292")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -2202,11 +2202,21 @@ def create_app() -> FastAPI:
         return nodes
 
     async def _retained_remotes() -> list[dict[str, Any]]:
-        """Remotes the integration still holds, including offline/retained ones."""
+        """Remotes the integration still holds, including offline/retained ones.
+
+        Primary source is the integration's own storage file. The add-on mounts the
+        HA config dir, so this is a cheap local read; the websocket command is only a
+        fallback because it needs the integration to be loaded AND version-matched,
+        and a mismatch silently yields nothing (the remotes then vanish from the
+        topology again). Ordering matters: the file is the durable record.
+        """
+        remotes = _retained_remotes_from_storage()
+        if remotes:
+            return remotes
         if not settings.supervisor_token:
             return []
         try:
-            msg = await ha_ws_call({"type": "esp_tree/remotes"}, timeout=2.0)
+            msg = await ha_ws_call({"type": "esp_tree/remotes"}, timeout=5.0)
         except Exception:
             return []
         result = msg.get("result") if isinstance(msg, dict) else None
@@ -2214,6 +2224,37 @@ def create_app() -> FastAPI:
             return []
         remotes = result.get("remotes")
         return remotes if isinstance(remotes, list) else []
+
+    def _retained_remotes_from_storage() -> list[dict[str, Any]]:
+        """Read retained remotes from HA's own store file for the integration.
+
+        Store() writes JSON to <config>/.storage/esp_tree.runtime with the payload
+        under "data", so the remotes live at data["remotes"]. Both {"remotes": {...}}
+        and a bare mapping are tolerated: the integration has used a dict keyed by
+        mac, and a shape change must not silently empty the topology.
+        """
+        import json as _json
+
+        path = Path("/homeassistant/.storage/esp_tree.runtime")
+        try:
+            if not path.exists():
+                return []
+            payload = _json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        data = payload.get("data") if isinstance(payload, dict) else None
+        raw = data.get("remotes") if isinstance(data, dict) else None
+        if isinstance(raw, dict):
+            items = []
+            for mac, entry in raw.items():
+                if isinstance(entry, dict):
+                    merged = {"mac": mac}
+                    merged.update(entry)
+                    items.append(merged)
+            return items
+        if isinstance(raw, list):
+            return [r for r in raw if isinstance(r, dict)]
+        return []
 
     @app.delete("/api/topology/hide/{mac}")
     async def hide_device(mac: str) -> dict[str, Any]:
