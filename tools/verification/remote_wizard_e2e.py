@@ -16,6 +16,7 @@ import sys
 import types
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from app.db import Database, normalize_mac
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -139,6 +140,26 @@ def main() -> int:
     except Exception as exc:
         check("add_bridge is guarded by 'not is_remote'", False, str(exc))
 
+
+
+    # 10. delete_device must clear ota_jobs first: ota_jobs.mac is a FOREIGN KEY onto
+    #     devices(mac) with foreign_keys=ON, and a wizard submit always creates a
+    #     compile job, so deleting the device alone raises IntegrityError and leaves
+    #     the placeholder behind (this is exactly how the live finalize failed).
+    import tempfile
+    from pathlib import Path as _P
+    _db = Database(_P(tempfile.mkdtemp()) / "fk.db"); _db.init()
+    _nm = normalize_mac("FF:FF:FF:FF:FF:FE")
+    _db.upsert_devices_from_topology([{"mac": _nm, "label": "fk", "esphome_name": "fk",
+                                       "chip_name": "ESP32-C6", "is_bridge": False}], "0.0.0.0")
+    with _db.connect() as _c:
+        _c.execute("INSERT INTO ota_jobs (mac, status, created_at) VALUES (?,?,?)", (_nm, "compiling", 1))
+    check("delete_device clears a device that has compile jobs", _db.delete_device(_nm) is True)
+    check("device row gone after delete_device", _db.get_device(_nm) is None)
+    with _db.connect() as _c:
+        _n = _c.execute("SELECT COUNT(*) c FROM ota_jobs WHERE mac=?", (_nm,)).fetchone()["c"]
+    check("child ota_jobs rows gone too (no orphan/FK error)", _n == 0)
+
     print("=" * 70)
     passed = 0
     for name, ok, detail in RESULTS:
@@ -148,7 +169,6 @@ def main() -> int:
     print("=" * 70)
     print(f"{passed}/{len(RESULTS)} checks passed")
     return 0 if passed == len(RESULTS) else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

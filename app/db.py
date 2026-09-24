@@ -394,11 +394,18 @@ class Database:
 
     def delete_device(self, mac: str) -> bool:
         """Remove a device row. Used to clear the synthetic placeholder a remote
-        flash registers before the real node appears in the bridge topology."""
+        flash registers before the real node appears in the bridge topology.
+
+        ota_jobs.mac has a FOREIGN KEY onto devices(mac) and the connection runs
+        with foreign_keys=ON, so the child job rows must go first: a flash wizard
+        submit always creates a compile job, so deleting the device alone raises
+        IntegrityError and leaves the placeholder behind.
+        """
         nm = normalize_mac(mac)
         if not nm:
             return False
         with self.connect() as conn:
+            conn.execute("DELETE FROM ota_jobs WHERE mac = ?", (nm,))
             cursor = conn.execute("DELETE FROM devices WHERE mac = ?", (nm,))
             conn.execute("DELETE FROM hidden_devices WHERE mac = ?", (nm,))
             return cursor.rowcount > 0

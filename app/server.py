@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.290")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.291")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1953,14 +1953,15 @@ def create_app() -> FastAPI:
         flash_wizard_pending=1 waiting for a network scan that can never find it.
         """
         prov = db.get_provisioning_bridge()
+        nm = normalize_mac(REMOTE_PLACEHOLDER_MAC)
+
         if not prov:
-            # Remote finish: drop the synthetic placeholder row. The remote is added
-            # for real by the normal topology upsert once it joins the bridge, so
-            # keeping the placeholder would leave a permanent fake offline node.
-            nm = normalize_mac(REMOTE_PLACEHOLDER_MAC)
+            # A remote never creates a bridges row, so "no provisioning bridge" is its
+            # normal finish: drop the synthetic placeholder. The remote is added for
+            # real by the normal topology upsert once it joins the bridge, so keeping
+            # the placeholder would leave a permanent fake offline node.
             try:
-                dev = db.get_device(nm)
-                if dev:
+                if db.get_device(nm):
                     db.delete_device(nm)
                     logger.info("flash_wizard_finalize: cleared remote placeholder %s", nm)
                     return {"activated": False, "kind": "remote", "detail": "remote placeholder cleared"}
@@ -1971,6 +1972,16 @@ def create_app() -> FastAPI:
                 logger.exception("flash_wizard_finalize: could not clear remote placeholder %s", nm)
                 return {"activated": False, "kind": "remote", "detail": "placeholder cleanup failed"}
             return {"activated": False, "detail": "no provisioning bridge"}
+
+        # A bridge is provisioning: that is the request to service. A stale remote
+        # placeholder is cleared best-effort but must NOT change this response, or a
+        # remote finished earlier would stop the bridge ever being activated.
+        try:
+            if db.get_device(nm):
+                db.delete_device(nm)
+                logger.info("flash_wizard_finalize: also cleared stale remote placeholder %s", nm)
+        except Exception:
+            logger.warning("flash_wizard_finalize: stale remote placeholder %s not cleared", nm, exc_info=True)
         activated = await _try_auto_activate_provisioned_bridge()
         return {
             "activated": activated,
