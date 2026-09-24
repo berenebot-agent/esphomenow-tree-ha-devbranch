@@ -81,10 +81,11 @@ export class EspSettings extends LitElement {
 
     const { installed, loaded, configured, connected, bridge_count, remote_count } = int;
     // remote_count includes offline remotes kept from earlier sessions, so show the
-    // online split when the integration reports it. Otherwise "5 remotes" reads as
-    // five live devices when the bridge may only have one.
-    const online = int.remotes_online ?? remote_count;
-    const offline = remote_count - online;
+    // online split when the integration reports it. Older integrations don't send it:
+    // fall back to a neutral count rather than claiming the total is online.
+    const hasOnline = typeof int.remotes_online === 'number';
+    const online = hasOnline ? int.remotes_online! : 0;
+    const offline = hasOnline ? remote_count - online : 0;
 
     if (!installed) {
       return html`
@@ -138,8 +139,13 @@ export class EspSettings extends LitElement {
         </div>
         <div class="int-connected-counts">
           ${bridge_count > 0 ? html`<span>${bridge_count} ${bridge_count === 1 ? 'bridge' : 'bridges'}</span>` : nothing}
-          ${online > 0 ? html`<span>${online} ${online === 1 ? 'remote' : 'remotes'} online</span>` : nothing}
-          ${offline > 0 ? html`<span class="muted">${offline} offline</span>` : nothing}
+          ${hasOnline
+            ? html`
+                ${online > 0 ? html`<span>${online} ${online === 1 ? 'remote' : 'remotes'} online</span>` : nothing}
+                ${offline > 0 ? html`<span class="muted">${offline} offline</span>` : nothing}
+                ${online === 0 && offline === 0 ? html`<span>no remotes</span>` : nothing}
+              `
+            : html`<span>${remote_count} ${remote_count === 1 ? 'remote' : 'remotes'} known</span>`}
         </div>
       </div>
     `;
