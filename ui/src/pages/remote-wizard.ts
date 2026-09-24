@@ -29,6 +29,8 @@ export class EspRemoteWizard extends LitElement {
   @state() private credentialsComplete = false;
   @state() private networkIdSource = '';
   @state() private pskSource = '';
+  @state() private credentialsMismatch = false;
+  @state() private bridgeNetworkId = '';
   @state() private loadingCredentials = false;
 
   @state() private stage: 'config' | 'compiling' | 'ready' | 'flashing' | 'done' | 'error' = 'config';
@@ -108,6 +110,8 @@ export class EspRemoteWizard extends LitElement {
       this.credentialsComplete = Boolean(res.complete);
       this.networkIdSource = res.network_id_source ?? '';
       this.pskSource = res.psk_source ?? '';
+      this.credentialsMismatch = Boolean(res.mismatch);
+      this.bridgeNetworkId = res.bridge_network_id ?? '';
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -333,8 +337,15 @@ export class EspRemoteWizard extends LitElement {
                       </p>`}
                   ${this.credentialsComplete
                     ? html`<p class="hint">
-                        Taken from the active bridge so the remote matches it. Edit secrets.yaml to
-                        change.
+                        Taken from secrets.yaml so the remote matches what the bridge is running.
+                      </p>`
+                    : nothing}
+                  ${this.credentialsMismatch
+                    ? html`<p class="hint warn-text">
+                        Note: the saved bridge record says the network ID is
+                        <code>${this.bridgeNetworkId}</code>, which disagrees with secrets.yaml.
+                        The bridge firmware reads secrets.yaml, so that value is used here — but
+                        the record is stale and worth correcting.
                       </p>`
                     : nothing}
                 </div>
@@ -517,6 +528,10 @@ export class EspRemoteWizard extends LitElement {
     .src {
       color: var(--muted, #64748b);
       font-size: 11px;
+    }
+
+    .warn-text {
+      color: #b45309;
     }
 
     .btn {

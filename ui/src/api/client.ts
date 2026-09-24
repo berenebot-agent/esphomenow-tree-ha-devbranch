@@ -563,6 +563,8 @@ export const api = {
       network_id_source: string;
       psk_source: string;
       complete: boolean;
+      bridge_network_id: string;
+      mismatch: boolean;
     }>('/api/bridge/network-credentials'),
   saveSecrets: (content: string) => request<{ content: string; saved: boolean }>('/api/secrets', {
     method: 'PUT',

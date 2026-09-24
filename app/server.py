@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.293")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.294")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1764,8 +1764,12 @@ def create_app() -> FastAPI:
             # the caller left either half empty, fall back to the configured values
             # rather than writing a blank secret. A blank one produces firmware that
             # compiles but can never join, which is far harder to diagnose.
-            active_bridge = db.get_active_bridge() or {}
+            # secrets.yaml is the authority (the bridge firmware reads !secret from
+            # it); the bridge row is only a fallback because it can hold a stale copy.
             if not secrets_to_merge["espnow_network_id"]:
+                secrets_to_merge["espnow_network_id"] = _secret_from_secrets_yaml("espnow_network_id")
+            if not secrets_to_merge["espnow_network_id"]:
+                active_bridge = db.get_active_bridge() or {}
                 secrets_to_merge["espnow_network_id"] = str(active_bridge.get("network_id") or "").strip()
             if not secrets_to_merge["espnow_psk"]:
                 secrets_to_merge["espnow_psk"] = _secret_from_secrets_yaml("espnow_psk")
@@ -3055,27 +3059,41 @@ def create_app() -> FastAPI:
     async def bridge_network_credentials() -> dict[str, Any]:
         """ESP-NOW credentials a new remote must share to join the network.
 
-        network_id comes from the active bridge row (the authoritative value for
-        the configured network); the PSK is only in secrets.yaml. A remote with a
-        mismatched pair cannot join, so both are resolved server-side and reported
-        with their source so the wizard can explain where they came from and
-        whether they are actually usable.
+        secrets.yaml wins for both halves: the bridge firmware resolves
+        `!secret espnow_network_id` / `espnow_psk` from there, so those are the values
+        the bridge is actually running with. The bridges table carries a copy that can
+        drift (or hold junk from a hand-created row), so it is only a fallback and any
+        disagreement is reported rather than silently flashed onto a new remote - a
+        mismatched pair produces a remote that can never join.
         """
         active = db.get_active_bridge() or {}
-        network_id = str(active.get("network_id") or "").strip()
+        bridge_network_id = str(active.get("network_id") or "").strip()
 
+        network_id = _secret_from_secrets_yaml("espnow_network_id")
+        network_id_source = "secrets.yaml"
         if not network_id:
-            network_id = _secret_from_secrets_yaml("espnow_network_id")
+            network_id = bridge_network_id
+            network_id_source = "active bridge" if bridge_network_id else "missing"
         psk = _secret_from_secrets_yaml("espnow_psk")
+
+        mismatch = bool(
+            network_id
+            and bridge_network_id
+            and network_id.upper() != bridge_network_id.upper()
+        )
 
         return {
             "network_id": network_id,
             "psk": psk,
             "bridge_name": active.get("name") or "",
             "bridge_uuid": active.get("uuid") or "",
-            "network_id_source": "active bridge" if active.get("network_id") else ("secrets.yaml" if network_id else "missing"),
+            "network_id_source": network_id_source,
             "psk_source": "secrets.yaml" if psk else "missing",
             "complete": bool(network_id and psk),
+            # The bridge's stored copy differs from what it is running with. Surfaced
+            # so the UI can warn instead of handing out credentials that cannot join.
+            "bridge_network_id": bridge_network_id,
+            "mismatch": mismatch,
         }
 
     @app.get("/api/secrets")
