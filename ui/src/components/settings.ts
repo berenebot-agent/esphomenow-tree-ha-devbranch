@@ -173,11 +173,25 @@ export class EspSettings extends LitElement {
   }
 
   private isBridgeConnected(bridge: ConfiguredBridge): boolean {
+    // Prefer the add-on's per-bridge client state. The previous check only asked
+    // whether this bridge was the ACTIVE one, so a bridge with no client running at
+    // all still rendered "connected" as long as it was active - which is exactly the
+    // case a bridge skipped for a missing api_key falls into.
+    if (typeof bridge.client_connected === 'boolean') {
+      return bridge.client_connected;
+    }
+    // Older payload without the field: keep the previous behaviour.
     if (!this.config?.active_bridge || this.config.active_bridge.error) {
       return false;
     }
     const active = this.config.active_bridge as { uuid?: string; host?: string; port?: number };
     return active.uuid === bridge.uuid || (active.host === bridge.host && active.port === bridge.port);
+  }
+
+  // Why a bridge has no client, straight from the add-on. Rendered next to the
+  // status so an unconnectable bridge is not indistinguishable from a healthy one.
+  private bridgeSkippedReason(bridge: ConfiguredBridge): string {
+    return (bridge.client_skipped_reason || '').trim();
   }
 
   private isBridgeActive(bridge: ConfiguredBridge): boolean {
@@ -513,6 +527,9 @@ export class EspSettings extends LitElement {
                         ${this.isBridgeConnected(bridge) ? 'connected' : 'disconnected'}
                       </span>
                       ${this.isBridgeActive(bridge) ? html`<span class="active-badge">Active</span>` : nothing}
+                      ${this.bridgeSkippedReason(bridge)
+                        ? html`<div class="bridge-skip-reason">${this.bridgeSkippedReason(bridge)}</div>`
+                        : nothing}
                     </td>
                     <td>
                       ${bridge.name || '-'}
@@ -780,6 +797,18 @@ export class EspSettings extends LitElement {
       color: var(--danger);
       border-color: var(--danger);
       background: #fee2e2;
+    }
+
+    /* Why a bridge has no client (e.g. "bridge has no api_key"). Without this the
+       row looked healthy while no client was ever started. */
+    .bridge-skip-reason {
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.25;
+      color: var(--danger);
+      text-transform: none;
+      font-weight: 500;
+      max-width: 22ch;
     }
 
     .active-badge {

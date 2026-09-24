@@ -234,6 +234,10 @@ export interface ConfiguredBridge {
   transport?: string;
   serial_port?: string;
   baud?: number;
+  // Per-bridge transport state from GET /api/bridges. Absent on older add-on
+  // payloads, in which case the UI must fall back to its previous check.
+  client_connected?: boolean;
+  client_skipped_reason?: string;
 }
 
 export interface AppConfig {
