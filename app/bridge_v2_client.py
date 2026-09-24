@@ -418,6 +418,18 @@ class BridgeV2Manager:
     def connected(self) -> bool:
         return any(client.connected for client in self._clients.values())
 
+    def client_connected(self, bridge_uuid: str) -> bool:
+        """Is this specific bridge's client connected?
+
+        Needed because a serial bridge has no host to detect it by: presence has to
+        come from the transport itself rather than from a discovered address.
+        """
+        client = self._clients.get(str(bridge_uuid or ""))
+        return bool(client is not None and client.connected)
+
+    def client_for(self, bridge_uuid: str) -> Any | None:
+        return self._clients.get(str(bridge_uuid or ""))
+
     def _effective_bridge_uptime(self, bridge_mac: str) -> int:
         entry = self._bridge_uptime_observed.get(normalize_mac(bridge_mac))
         if not entry:

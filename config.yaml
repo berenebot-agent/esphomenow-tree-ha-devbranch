@@ -1,5 +1,5 @@
 name: ESP Tree
-version: 0.1.282
+version: 0.1.283
 slug: esp-tree
 description: Manage ESP-NOW remotes through an ESP32 bridge
 arch:

@@ -368,6 +368,7 @@ class FlashWizardSubmitRequest(BaseModel):
     board_info: dict[str, str]
     serial_port: str = ""
     transport: str = "wifi"
+    baud: int = 460800
 
 
 def create_app() -> FastAPI:
@@ -383,7 +384,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.282")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.283")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1558,6 +1559,20 @@ def create_app() -> FastAPI:
         api_key = str(prov.get("api_key") or "")
         if not api_key:
             return False
+
+        if str(prov.get("transport") or "wifi") == "serial":
+            # A serial bridge is never discovered by scanning: there is no host and
+            # no network. Once its firmware is flashed, activation is just "start
+            # the serial client for this bridge and let it authenticate".
+            db.update_bridge(
+                prov["uuid"],
+                enabled=1,
+                flash_wizard_pending=0,
+            )
+            await reconnect_bridge()
+            logger.info("flash wizard: activated serial bridge uuid=%s", prov["uuid"])
+            return True
+
         cached = db.get_discovered_bridges()
         for bridge in cached:
             host = bridge["host"]
@@ -1743,6 +1758,12 @@ def create_app() -> FastAPI:
             mac=PLACEHOLDER_MAC,
             flash_wizard_pending=1,
             enabled=0,
+            # Carry the transport through to the bridge record, or the wizard's
+            # choice is lost here: the row would always look like a wifi bridge
+            # and the serial client would never be started for it.
+            transport=transport,
+            serial_port=body.serial_port.strip(),
+            baud=int(body.baud or 460800),
         )
         logger.info("flash_wizard_submit: created bridge record uuid=%s", bridge["uuid"])
 
@@ -1798,6 +1819,13 @@ def create_app() -> FastAPI:
             serial_status = compiler.serial_flash_status(esphome_name) or {}
 
         bridge_detected = prov.get("host", "0.0.0.0") not in ("", "0.0.0.0")
+        prov_transport = str(prov.get("transport") or "wifi")
+        if prov_transport == "serial":
+            # A serial bridge has no host to be discovered at, so presence has to
+            # come from the transport: is the add-on's serial client for this
+            # bridge actually connected? Without this the wizard polls on a
+            # permanent false and then errors telling the user to check WiFi.
+            bridge_detected = bridge_manager.client_connected(str(prov.get("uuid") or ""))
         detected_bridge = None
         if bridge_detected:
             detected_bridge = {
@@ -1810,10 +1838,31 @@ def create_app() -> FastAPI:
             "provisioning": True,
             "esphome_name": esphome_name,
             "mac": PLACEHOLDER_MAC,
+            "transport": prov_transport,
+            "serial_port": prov.get("serial_port", ""),
             "compile_status": compile_status_dict.get("status", "idle"),
             "serial_flash_status": serial_status.get("status", "idle"),
             "bridge_detected": bridge_detected,
             "detected_bridge": detected_bridge,
+        }
+
+    @app.post("/api/bridge/flash-wizard/finalize")
+    async def flash_wizard_finalize() -> dict[str, Any]:
+        """Activate the provisioning bridge once its firmware has been flashed.
+
+        For wifi this finds the bridge by scanning; for serial there is nothing to
+        scan, so it just enables the bridge and starts its serial client. Without
+        an explicit trigger a serial bridge would sit forever at
+        flash_wizard_pending=1 waiting for a network scan that can never find it.
+        """
+        prov = db.get_provisioning_bridge()
+        if not prov:
+            return {"activated": False, "detail": "no provisioning bridge"}
+        activated = await _try_auto_activate_provisioned_bridge()
+        return {
+            "activated": activated,
+            "uuid": prov.get("uuid"),
+            "transport": str(prov.get("transport") or "wifi"),
         }
 
     @app.get("/api/bridges")

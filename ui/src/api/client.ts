@@ -245,6 +245,8 @@ export interface FlashWizardStatus {
   provisioning: boolean;
   esphome_name?: string;
   mac?: string;
+  transport?: string;
+  serial_port?: string;
   compile_status?: string;
   serial_flash_status?: string;
   bridge_detected?: boolean;
@@ -578,6 +580,10 @@ export const api = {
 
   getFlashWizardStatus: () =>
     request<FlashWizardStatus>('/api/bridge/flash-wizard/status'),
+
+  finalizeFlashWizard: () =>
+    request<{ activated: boolean; uuid?: string; transport?: string; detail?: string }>(
+      '/api/bridge/flash-wizard/finalize', { method: 'POST' }),
 
   streamCompileLogs(mac: string, onLog: (line: string) => void, onError: (err: Event) => void): EventSource {
     const url = apiPath(`/api/devices/${encodeURIComponent(mac)}/compile/logs`);
