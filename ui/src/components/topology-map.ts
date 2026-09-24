@@ -72,6 +72,29 @@ export class EspTopologyMap extends LitElement {
     }
   }
 
+  /**
+   * Forget a retained/stale remote for good. Confirmed first: unlike hide, this
+   * destroys the record and cannot be undone from the UI.
+   */
+  private async handleRemoveDevice(mac: string): Promise<void> {
+    const node = this.topology.find((n) => n.mac === mac);
+    const label = node?.friendly_name || node?.esphome_name || node?.label || mac;
+    if (!window.confirm(
+      `Remove ${label} permanently?\n\n` +
+      'This deletes it from the add-on and from Home Assistant, including any ' +
+      'retained history. It cannot be undone from here. ' +
+      'If the device is still powered on it will simply reappear.'
+    )) {
+      return;
+    }
+    try {
+      await api.removeRemote(mac);
+      await this.load(false, true);
+    } catch (err) {
+      console.error('Failed to remove device:', err);
+    }
+  }
+
   private jobForMac(mac: string): OtaJob | null {
     const nm = normalizeMac(mac);
     if (this.currentJob && normalizeMac(this.currentJob.mac) === nm) return this.currentJob;
@@ -158,6 +181,7 @@ export class EspTopologyMap extends LitElement {
                     .jobForMac=${(mac: string) => this.jobForMac(mac)}
                     .configForMac=${(mac: string) => this.configForMac(mac)}
                     .onHideDevice=${(mac: string) => this.handleHideDevice(mac)}
+                    .onRemoveDevice=${(mac: string) => this.handleRemoveDevice(mac)}
                     .isRoot=${true}
                   ></esp-topology-node>
                 </div>

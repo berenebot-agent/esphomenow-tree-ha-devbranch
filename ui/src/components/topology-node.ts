@@ -10,6 +10,7 @@ export class EspTopologyNode extends LitElement {
   @property({ attribute: false }) jobForMac: (mac: string) => OtaJob | null = () => null;
   @property({ attribute: false }) configForMac: (mac: string) => ConfigStatus | null = () => null;
   @property({ attribute: false }) onHideDevice: (mac: string) => void = () => {};
+  @property({ attribute: false }) onRemoveDevice: (mac: string) => void = () => {};
   @property({ type: Boolean }) isRoot = false;
   @property({ type: Boolean, reflect: true }) isLast = false;
 
@@ -107,6 +108,10 @@ export class EspTopologyNode extends LitElement {
           ${isRemote ? html`
             <span class="action-buttons">
               <button class="icon-btn" title="Edit YAML config" @click=${(e: Event) => { e.stopPropagation(); this.navigateTo(`/device/${encodeURIComponent(this.node.mac)}/config`); }}>Edit YAML</button>
+              ${this.node.online
+                ? nothing
+                : html`<button class="icon-btn danger" title="Forget this remote (removes it from the network and Home Assistant)"
+                       @click=${(e: Event) => { e.stopPropagation(); this.onRemoveDevice(this.node.mac); }}>Remove</button>`}
             </span>
           ` : nothing}
         </div>
@@ -123,6 +128,7 @@ export class EspTopologyNode extends LitElement {
                     .jobForMac=${this.jobForMac}
                     .configForMac=${this.configForMac}
                     .onHideDevice=${this.onHideDevice}
+                    .onRemoveDevice=${this.onRemoveDevice}
                     .isLast=${i === this.childNodesData.length - 1}
                   ></esp-topology-node>
                 `
@@ -291,6 +297,18 @@ export class EspTopologyNode extends LitElement {
     .icon-btn:hover {
       background: #0d5f58;
       border-color: #0d5f58;
+      transform: translateY(-1px);
+    }
+
+    .icon-btn.danger {
+      background: #fff;
+      border-color: #fecaca;
+      color: #b91c1c;
+    }
+
+    .icon-btn.danger:hover {
+      background: #fef2f2;
+      border-color: #fca5a5;
       transform: translateY(-1px);
     }
 

@@ -209,6 +209,27 @@ def main() -> int:
     check("the remote arm has no espnow_* assignment at all",
           "secrets_to_merge[\"espnow_network_id\"] = " not in _sub[: _sub.index("else:")])
 
+    # 13. Removing a stale remote must be possible from the UI, and must be a
+    #     genuinely destructive action distinct from the reversible hide.
+    check("there is a remove-remote endpoint",
+          '@app.delete("/api/topology/remote/{mac}")' in _srv)
+    _rm_start = _srv.index("async def remove_remote")
+    _rm = _srv[_rm_start:_srv.index("@app.post(\"/api/topology/unhide", _rm_start)]
+    check("removal forgets the remote in the integration (durable record), not just locally",
+          '"esp_tree"' in _rm and '"forget_remote"' in _rm)
+    check("removal refuses a remote that is still online",
+          'currently online' in _rm)
+    check("removal clears the local device row",
+          "db.delete_device(target_mac)" in _rm)
+    check("removal also clears any hidden marker",
+          "db.unhide_device(target_mac)" in _rm)
+    _ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "ui", "src", "components", "topology-node.ts")).read()
+    check("the UI exposes a Remove action for remotes", ">Remove</button>" in _ui)
+    check("Remove is styled as destructive, not identical to Edit YAML",
+          ".icon-btn.danger" in _ui)
+    check("Remove is offered only for offline remotes", "this.node.online\n                ? nothing" in _ui)
+
     print("=" * 70)
     passed = 0
     for name, ok, detail in RESULTS:

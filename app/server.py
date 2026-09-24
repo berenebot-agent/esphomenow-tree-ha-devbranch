@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.295")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.296")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -2333,6 +2333,80 @@ def create_app() -> FastAPI:
         target_mac = validate_mac_or_400(mac)
         db.hide_device(target_mac)
         return {"mac": target_mac, "hidden": True}
+
+    @app.delete("/api/topology/remote/{mac}")
+    async def remove_remote(mac: str) -> dict[str, Any]:
+        """Forget a remote entirely: config entry, device row, retained store entry.
+
+        Distinct from hide: hiding is a reversible cosmetic marker, whereas forget
+        destroys the retained record. Needed because a stale remote from an older
+        network otherwise stays in the topology forever with no way to clear it.
+
+        A remote that the bridge still reports is refused - that is a live device, and
+        removing it would only have it re-added by the next topology upsert. Take it
+        off the air (or hide it) instead.
+        """
+        target_mac = validate_mac_or_400(mac)
+
+        manager = control_manager()
+        if manager:
+            try:
+                live = find_node_by_mac(await manager.topology(), target_mac)
+            except Exception:
+                live = None
+            if live and not live.get("is_bridge") and live.get("online", False):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "this remote is currently online; removing it would only be undone "
+                        "by the next topology update. Hide it, or take it off the air first."
+                    ),
+                )
+
+        errors: list[str] = []
+        forgot_in_integration = False
+
+        # The integration holds the durable record (its own store file + config entry),
+        # so forget there first. Without this the remote reappears from the store on
+        # the next read even after the add-on row is gone.
+        if settings.supervisor_token:
+            try:
+                await ha_ws_call(
+                    {
+                        "type": "call_service",
+                        "domain": "esp_tree",
+                        "service": "forget_remote",
+                        "service_data": {"remote_mac": target_mac},
+                    },
+                    timeout=15.0,
+                )
+                forgot_in_integration = True
+            except Exception as exc:
+                errors.append(f"integration forget_remote failed: {exc}")
+
+        # Add-on side: device row, its jobs, and any hidden marker.
+        try:
+            if db.get_device(target_mac):
+                db.delete_device(target_mac)
+            db.unhide_device(target_mac)
+        except Exception as exc:
+            errors.append(f"local cleanup failed: {exc}")
+
+        if errors and not forgot_in_integration:
+            raise HTTPException(status_code=502, detail="; ".join(errors))
+
+        logger.info(
+            "remove_remote: forgot %s (integration=%s, warnings=%s)",
+            target_mac,
+            forgot_in_integration,
+            errors or "none",
+        )
+        return {
+            "mac": target_mac,
+            "removed": True,
+            "integration": forgot_in_integration,
+            "warnings": errors,
+        }
 
     @app.post("/api/topology/unhide/{mac}")
     async def unhide_device(mac: str) -> dict[str, Any]:

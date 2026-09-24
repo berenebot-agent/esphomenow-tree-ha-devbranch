@@ -452,6 +452,12 @@ export const api = {
   },
   hideDevice: (mac: string) =>
     request<{ mac: string; hidden: boolean }>(`/api/topology/hide/${encodeURIComponent(mac)}`, { method: 'DELETE' }),
+  removeRemote: (mac: string) =>
+    request<{ mac: string; removed: boolean; integration: boolean; warnings: string[] }>(
+      `/api/topology/remote/${encodeURIComponent(mac)}`,
+      { method: 'DELETE' },
+    ),
+
   unhideDevice: (mac: string) =>
     request<{ mac: string; hidden: boolean }>(`/api/topology/unhide/${encodeURIComponent(mac)}`, { method: 'POST' }),
   devices: () => request<Record<string, unknown>[]>('/api/devices'),
