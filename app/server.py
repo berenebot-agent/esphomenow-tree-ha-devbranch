@@ -2017,7 +2017,17 @@ def create_app() -> FastAPI:
 
     @app.get("/api/bridges")
     async def list_bridges() -> list[dict[str, Any]]:
-        return db.list_bridges()
+        # Annotate each bridge with why its client was skipped, if it was. A bridge
+        # that cannot connect must not be indistinguishable from one that is merely
+        # idle: the UI polls this list, so the reason belongs in the payload.
+        skipped = bridge_manager.skipped_bridges()
+        rows = db.list_bridges()
+        for row in rows:
+            uuid = str(row.get("uuid") or "")
+            row["client_connected"] = bridge_manager.client_connected(uuid)
+            if uuid in skipped:
+                row["client_skipped_reason"] = skipped[uuid]
+        return rows
 
     async def _fetch_hostname_from_bridge(host: str, port: int) -> str:
         import httpx
@@ -2111,7 +2121,19 @@ def create_app() -> FastAPI:
         existing = db.get_bridge(bridge_uuid)
         if not existing:
             raise HTTPException(status_code=404, detail="bridge not found")
-        await bridge_manager.reconnect_bridge(bridge_uuid)
+        # Report what actually happened. reconnect_bridge() answers False when no
+        # client exists for this bridge, and the old handler discarded that and
+        # always returned reconnected=True - so a bridge whose client was never
+        # started (sync_bridges skips one with no api_key, or skips a wifi bridge
+        # with no host) reported a successful reconnect while nothing connected.
+        reconnected = await bridge_manager.reconnect_bridge(bridge_uuid)
+        if not reconnected:
+            reason = "no client is running for this bridge"
+            if not str(existing.get("api_key") or "").strip():
+                reason = "bridge has no api_key, so no client is started for it"
+            elif str(existing.get("transport") or "wifi") != "serial" and not str(existing.get("host") or "").strip():
+                reason = "bridge has no host, so no client is started for it"
+            raise HTTPException(status_code=409, detail=f"bridge not reconnected: {reason}")
         return {"reconnected": True, "uuid": bridge_uuid}
 
     @app.put("/api/bridges/{bridge_uuid}/activate")

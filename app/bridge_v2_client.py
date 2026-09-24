@@ -413,10 +413,19 @@ class BridgeV2Manager:
         self._bridge_uptime_observed: dict[str, tuple[int, float]] = {}
         self._integration_clients: dict[asyncio.Queue[bytes], IntegrationClientMeta] = {}
         self._device_id_map: dict[str, str] = {}
+        # Bridges present in the DB but skipped by sync_bridges, keyed by uuid with the
+        # reason. Without this a bridge that can never connect (no api_key, or a wifi
+        # bridge with no host) looks like a working one: it is listed, it is enabled,
+        # and nothing anywhere says why no client was started for it.
+        self._skipped_bridges: dict[str, str] = {}
 
     @property
     def connected(self) -> bool:
         return any(client.connected for client in self._clients.values())
+
+    def skipped_bridges(self) -> dict[str, str]:
+        """Bridges that sync_bridges refused to start a client for: uuid -> reason."""
+        return dict(self._skipped_bridges)
 
     def client_connected(self, bridge_uuid: str) -> bool:
         """Is this specific bridge's client connected?
@@ -454,9 +463,12 @@ class BridgeV2Manager:
             host = str(bridge.get("host") or "").strip()
             transport = bridge.get("transport", "wifi")
             if transport != "serial" and not host:
+                self._skipped_bridges[bridge_uuid] = "bridge has no host"
                 continue
             if not bridge_uuid or not api_key:
+                self._skipped_bridges[bridge_uuid] = "bridge has no api_key"
                 continue
+            self._skipped_bridges.pop(bridge_uuid, None)
             serial_port = bridge.get("serial_port", "")
             baud = bridge.get("baud", 460800)
             wanted.add(bridge_uuid)

@@ -272,17 +272,24 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
             f"    rx_buffer_size: {SERIAL_RX_BUFFER_SIZE}",
         ])
         if pins is None:
-            lines.extend([
-                "# NOTE: unknown SoC — set tx_pin/rx_pin to this chip's UART0 defaults.",
-                "    # tx_pin: GPIO<x>",
-                "    # rx_pin: GPIO<y>",
-            ])
-        else:
-            tx, rx = pins
-            lines.extend([
-                f"    tx_pin: GPIO{tx}",
-                f"    rx_pin: GPIO{rx}",
-            ])
+            # A serial scaffold with no pins cannot be flashed: ESPHome rejects the
+            # `uart:` block outright ("Must contain at least one of tx_pin, rx_pin,
+            # port"), and the "unknown SoC" case above means the caller passed board
+            # info this build has no UART0 mapping for. A commented-out pin pair is
+            # not a usable config — it just moves the failure to compile time, where
+            # it reads like a firmware fault instead of a bad board argument. Fail
+            # here, where the cause is still visible.
+            raise ValueError(
+                "cannot scaffold serial transport: no UART0 pins known for "
+                f"board_info={board_info!r} (variant={board_info.get('variant')!r}, "
+                f"platform={board_info.get('platform')!r}). Pass a board whose "
+                "'variant' is in UART0_PINS_BY_VARIANT."
+            )
+        tx, rx = pins
+        lines.extend([
+            f"    tx_pin: GPIO{tx}",
+            f"    rx_pin: GPIO{rx}",
+        ])
         lines.append("")
 
     if not (is_bridge and serial_mode):
