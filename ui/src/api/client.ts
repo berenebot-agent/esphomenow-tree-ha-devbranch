@@ -569,6 +569,7 @@ export const api = {
     chip_name: string;
     board_info: Record<string, string>;
     serial_port?: string;
+    transport?: string;
   }) =>
     request<{ status: string; mac: string; esphome_name: string; job_id: number }>('/api/bridge/flash-wizard/submit', {
       method: 'POST',

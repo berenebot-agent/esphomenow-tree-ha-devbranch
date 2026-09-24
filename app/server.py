@@ -359,14 +359,15 @@ class FlashWizardSubmitRequest(BaseModel):
     name: str
     network_id: str
     psk: str
-    wifi_ssid: str
-    wifi_password: str
+    wifi_ssid: str = ""
+    wifi_password: str = ""
     api_key: str = ""
     espnow_mode: str = "lr"
     ota_password: str = ""
     chip_name: str
     board_info: dict[str, str]
     serial_port: str = ""
+    transport: str = "wifi"
 
 
 def create_app() -> FastAPI:
@@ -382,7 +383,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.281")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.282")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1671,8 +1672,11 @@ def create_app() -> FastAPI:
         board_info = {str(key): str(value) for key, value in body.board_info.items() if value is not None}
         api_key = body.api_key.strip() or secrets_mod.token_urlsafe(24)
         ota_password = body.ota_password.strip() or secrets_mod.token_urlsafe(24)
+        transport = (body.transport or "wifi").strip().lower()
+        if transport not in ("wifi", "serial"):
+            raise HTTPException(status_code=400, detail=f"unsupported transport: {transport}")
 
-        logger.info("flash_wizard_submit: name=%s chip=%s", name, chip_name)
+        logger.info("flash_wizard_submit: name=%s chip=%s transport=%s", name, chip_name, transport)
 
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
@@ -1685,28 +1689,38 @@ def create_app() -> FastAPI:
             "chip_name": chip_name,
             "board_info": board_info,
             "espnow_mode": body.espnow_mode,
+            "transport": transport,
             "sdkconfig_options": {
                 "CONFIG_FREERTOS_USE_TRACE_FACILITY": "y",
                 "CONFIG_ESP_MAIN_TASK_STACK_SIZE": "12288",
             },
-            "wifi_ssid_secret": "wifi_ssid",
-            "wifi_password_secret": "wifi_password",
             "ota_password": "!secret ota_password",
             "api_key": "!secret bridge_api_key",
             "web_server_port": 80,
         }
+        if transport == "serial":
+            # No wifi: block in serial mode, so no wifi secrets may be referenced:
+            # a !secret with no matching key is a hard failure at config load.
+            node["serial_transport"] = True
+        else:
+            node["wifi_ssid_secret"] = "wifi_ssid"
+            node["wifi_password_secret"] = "wifi_password"
         yaml_content, _ = generate_scaffold(node)
         yaml_store.save_config(name, yaml_content)
         logger.info("flash_wizard_submit: saved yaml config for %s", name)
 
-        yaml_store.merge_secrets({
+        secrets_to_merge = {
             "espnow_network_id": body.network_id,
             "espnow_psk": body.psk,
-            "wifi_ssid": body.wifi_ssid,
-            "wifi_password": body.wifi_password,
             "bridge_api_key": api_key,
             "ota_password": ota_password,
-        })
+        }
+        if transport != "serial":
+            # Serial configs have no wifi: block, so writing empty wifi secrets
+            # would only leave unused junk in secrets.yaml.
+            secrets_to_merge["wifi_ssid"] = body.wifi_ssid
+            secrets_to_merge["wifi_password"] = body.wifi_password
+        yaml_store.merge_secrets(secrets_to_merge)
         logger.info("flash_wizard_submit: merged secrets for %s", name)
 
         existing_prov = db.get_provisioning_bridge()

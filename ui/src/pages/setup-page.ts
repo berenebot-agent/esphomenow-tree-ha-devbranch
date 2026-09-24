@@ -78,6 +78,7 @@ export class EspSetupWizard extends LitElement {
   @state() private flashEspnowMode = 'lr';
   @state() private flashOtaPassword = '';
   @state() private flashChipName = '';
+  @state() private flashTransport: 'wifi' | 'serial' = 'wifi';
   @state() private flashBoardInfo: Record<string, string> | null = null;
   @state() private flashBrowserDetecting = false;
   @state() private flashBrowserDetectError = '';
@@ -772,8 +773,8 @@ export class EspSetupWizard extends LitElement {
     if (!/^[a-z][a-z0-9-]*$/.test(this.flashName.trim())) errors.push('ESPHome Name must be lowercase letters, numbers, and hyphens');
     if (!this.flashNetworkId.trim()) errors.push('ESP-NOW Network ID is required');
     if (!this.flashPsk.trim()) errors.push('ESP-NOW PSK is required');
-    if (!this.flashWifiSsid.trim()) errors.push('WiFi SSID is required');
-    if (!this.flashWifiPassword.trim()) errors.push('WiFi Password is required');
+    if (!this.flashWifiSsid.trim() && this.flashTransport === 'wifi') errors.push('WiFi SSID is required');
+    if (!this.flashWifiPassword.trim() && this.flashTransport === 'wifi') errors.push('WiFi Password is required');
     if (!/^[0-9a-fA-F]{64}$/.test(this.flashPsk.trim())) {
       errors.push('PSK must be 64 hex characters');
     }
@@ -808,6 +809,7 @@ export class EspSetupWizard extends LitElement {
         ota_password: this.flashOtaPassword,
         chip_name: this.flashChipName,
         board_info: boardInfo,
+        transport: this.flashTransport,
       });
       this.flashMac = result.mac;
       void this.pollCompileStatus();
@@ -1318,14 +1320,30 @@ export class EspSetupWizard extends LitElement {
         </label>
 
         <label>
-          WiFi SSID
-          <input type="text" placeholder="WiFi network name" .value=${this.flashWifiSsid} @input=${(e: Event) => this.flashWifiSsid = (e.target as HTMLInputElement).value} />
+          Transport
+          <select .value=${this.flashTransport} @change=${(e: Event) => this.flashTransport = ((e.target as HTMLSelectElement).value === 'serial' ? 'serial' : 'wifi')}>
+            <option value="wifi">WiFi / MQTT</option>
+            <option value="serial">Serial (USB-UART)</option>
+          </select>
         </label>
 
-        <label>
-          WiFi Password
-          <input type="password" placeholder="WiFi password" .value=${this.flashWifiPassword} @input=${(e: Event) => this.flashWifiPassword = (e.target as HTMLInputElement).value} />
-        </label>
+        ${this.flashTransport === 'wifi' ? html`
+          <label>
+            WiFi SSID
+            <input type="text" placeholder="WiFi network name" .value=${this.flashWifiSsid} @input=${(e: Event) => this.flashWifiSsid = (e.target as HTMLInputElement).value} />
+          </label>
+
+          <label>
+            WiFi Password
+            <input type="password" placeholder="WiFi password" .value=${this.flashWifiPassword} @input=${(e: Event) => this.flashWifiPassword = (e.target as HTMLInputElement).value} />
+          </label>
+        ` : html`
+          <div class="flash-warning">
+            Serial transport: no WiFi credentials are needed. The bridge talks to the add-on over its
+            UART0 pins (wired to a USB-UART adapter), and the console is pinned to the same UART so
+            boot logs and panic backtraces stay readable.
+          </div>
+        `}
 
         <label>
           API Key <span class="muted">(will be remembered by addon)</span>

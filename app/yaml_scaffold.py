@@ -37,6 +37,43 @@ def esphome_platform_key(board_info: dict[str, str]) -> str:
     return platform
 
 
+# Default UART0 (tx, rx) pin numbers per SoC variant, taken from ESP-IDF v5.5
+# `components/soc/<chip>/include/soc/uart_pins.h` (U0TXD_GPIO_NUM /
+# U0RXD_GPIO_NUM). These are the pins the ROM bootloader prints on, so wiring a
+# USB-UART adapter to them gives you the console without any pad re-routing.
+#
+# Why hardcode at all: ESPHome's `uart:` schema requires at least one of
+# tx_pin / rx_pin / port, so a block with neither pin fails validation outright
+# ("Must contain at least one of tx_pin, rx_pin, port"). Omitting the pins to get
+# the ROM default is not expressible in YAML — so a serial scaffold must name the
+# chip-correct pair. Keyed by the `variant:` value in CHIP_NAME_TO_BOARD; entries
+# without a variant (classic ESP32 boards) fall back to key "esp32".
+UART0_PINS_BY_VARIANT: dict[str, tuple[int, int]] = {
+    "esp32": (1, 3),
+    "esp32s2": (43, 44),
+    "esp32s3": (43, 44),
+    "esp32c2": (20, 19),
+    "esp32c3": (21, 20),
+    "esp32c5": (11, 12),
+    "esp32c6": (16, 17),
+    "esp32h2": (24, 23),
+}
+
+# The hardware FIFO is 128 bytes and the link runs at ~46 KB/s at 460800 baud, so
+# a small rx buffer overflows during ESP-NOW radio operations. Matches the demo.
+SERIAL_RX_BUFFER_SIZE = 16384
+SERIAL_DEFAULT_BAUD = 460800
+
+
+def uart0_pins_for_board(board_info: dict[str, str]) -> tuple[int, int] | None:
+    """UART0 (tx, rx) for this board, or None if the SoC is not in the map."""
+    variant = str(board_info.get("variant") or "").strip().lower()
+    if not variant:
+        platform = str(board_info.get("platform") or "").strip().lower()
+        variant = "esp32" if platform == "esp32" else platform
+    return UART0_PINS_BY_VARIANT.get(variant)
+
+
 def chip_type_to_board(chip_type: int) -> dict[str, str] | None:
     return CHIP_TYPE_TO_BOARD.get(chip_type)
 
@@ -82,6 +119,12 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
     board_info, chip_unknown = find_board_info(node)
     is_bridge = bool(node.get("is_bridge"))
     is_8266 = board_info is not None and board_info["platform"] == "esp8266"
+    # A bridge is either WiFi/MQTT (default) or serial-transport. Serial is
+    # selected by `transport: "serial"` (set by the flash wizard's Serial tab) or
+    # by the older signal of having no wifi secret at all.
+    serial_mode = is_bridge and (
+        bool(node.get("serial_transport")) or node.get("transport") == "serial"
+    )
     if is_bridge:
         remote_component = "esp_tree_bridge"
     elif is_8266:
@@ -164,7 +207,7 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
     ])
 
     if is_bridge:
-        if node.get("wifi_ssid_secret") is not None:
+        if node.get("wifi_ssid_secret") is not None and not serial_mode:
             wifi_ssid = node.get("wifi_ssid_secret", "wifi_ssid")
             wifi_pass = node.get("wifi_password_secret", "wifi_password")
             lines.extend([
@@ -184,7 +227,7 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
             node.get("web_server_port") is not None
             or node.get("ota_password") is not None
         )
-        if node.get("wifi_ssid_secret") is None and wants_web_or_ota:
+        if (node.get("wifi_ssid_secret") is None or serial_mode) and wants_web_or_ota:
             lines.extend([
                 "network:",
                 "",
@@ -206,11 +249,48 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
                 "",
             ])
 
-    lines.extend([
-        "logger:",
-        "  level: DEBUG",
-        "",
-    ])
+    if is_bridge and serial_mode:
+        baud = int(node.get("serial_baud") or SERIAL_DEFAULT_BAUD)
+        pins = uart0_pins_for_board(board_info)
+        lines.extend([
+            "logger:",
+            "  level: DEBUG",
+            # Pin the console to UART0. Without hardware_uart: ESPHome defaults the
+            # C5/C6/S3 to USB-Serial-JTAG and emits CONFIG_ESP_CONSOLE_UART_NUM=-1,
+            # which routes logs AND panic backtraces to native USB. On a CH340/
+            # CP2102 wired to the UART0 pins that makes an early crash look like a
+            # silent hang. Must match the bridge_uart baud below.
+            "  hardware_uart: UART0",
+            f"  baud_rate: {baud}",
+            "",
+            "# UART bus for serial transport. The larger rx_buffer_size is required:",
+            "# the ESP32 FIFO is 128 bytes and data arrives at ~46 KB/s at 460800",
+            "# baud, so a small buffer overflows during ESP-NOW radio operations.",
+            "uart:",
+            "  - id: bridge_uart",
+            f"    baud_rate: {baud}",
+            f"    rx_buffer_size: {SERIAL_RX_BUFFER_SIZE}",
+        ])
+        if pins is None:
+            lines.extend([
+                "# NOTE: unknown SoC — set tx_pin/rx_pin to this chip's UART0 defaults.",
+                "    # tx_pin: GPIO<x>",
+                "    # rx_pin: GPIO<y>",
+            ])
+        else:
+            tx, rx = pins
+            lines.extend([
+                f"    tx_pin: GPIO{tx}",
+                f"    rx_pin: GPIO{rx}",
+            ])
+        lines.append("")
+
+    if not (is_bridge and serial_mode):
+        lines.extend([
+            "logger:",
+            "  level: DEBUG",
+            "",
+        ])
 
     if is_bridge:
         lines.append(f"{remote_component}:")
@@ -221,6 +301,9 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
         lines.append("  ota_over_espnow: true")
         if node.get("api_key") is not None:
             lines.append("  api_key: !secret bridge_api_key")
+        if serial_mode:
+            lines.append("  serial_transport:")
+            lines.append("    uart_id: bridge_uart")
     else:
         lines.append(f"{remote_component}:")
         lines.append("  network_id: !secret espnow_network_id")

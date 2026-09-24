@@ -290,42 +290,51 @@ class SerialBridgeClient:
 
     def _read_loop(self) -> None:
         buf = bytearray()
-        while not self._stop_event.is_set():
-            try:
-                data = self._serial.read(4096) if self._serial and self._serial.is_open else b""
-            except Exception:
-                if not self._stop_event.is_set():
-                    logger.warning("serial bridge %s: read error", self._port_desc())
-                break
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    data = self._serial.read(4096) if self._serial and self._serial.is_open else b""
+                except Exception as exc:
+                    if not self._stop_event.is_set():
+                        logger.warning("serial bridge %s: read error: %r", self._port_desc(), exc)
+                    break
 
-            if data:
-                self._last_data_time = time.monotonic()
-                buf.extend(data)
-                while True:
-                    delim = buf.find(b"\x00")
-                    if delim < 0:
-                        break
-                    if delim > 0:
-                        frame_bytes = bytes(buf[:delim])
-                        try:
-                            decoded = cobs.decode(frame_bytes)
-                        except Exception:
-                            logger.warning("serial bridge %s: COBS decode error, skipping frame", self._port_desc())
+                if data:
+                    self._last_data_time = time.monotonic()
+                    buf.extend(data)
+                    while True:
+                        delim = buf.find(b"\x00")
+                        if delim < 0:
+                            break
+                        if delim > 0:
+                            frame_bytes = bytes(buf[:delim])
+                            try:
+                                decoded = cobs.decode(frame_bytes)
+                            except Exception:
+                                logger.warning("serial bridge %s: COBS decode error, skipping frame", self._port_desc())
+                                buf = buf[delim + 1:]
+                                continue
                             buf = buf[delim + 1:]
-                            continue
-                        buf = buf[delim + 1:]
-                        try:
-                            self._on_raw_frame(decoded)
-                        except Exception:
-                            logger.exception("serial bridge %s: frame dispatch error", self._port_desc())
-                    else:
-                        buf = buf[1:]
+                            try:
+                                self._on_raw_frame(decoded)
+                            except Exception:
+                                logger.exception("serial bridge %s: frame dispatch error", self._port_desc())
+                        else:
+                            buf = buf[1:]
 
-            if self.connected and time.monotonic() - self._last_data_time > CONNECTION_TIMEOUT_S:
-                logger.warning("serial bridge %s: connection timeout (no data for %ds)", self._port_desc(), CONNECTION_TIMEOUT_S)
-                if self._loop and not self._loop.is_closed():
-                    self._loop.call_soon_threadsafe(self._schedule_reconnect)
-                break
+                if self.connected and time.monotonic() - self._last_data_time > CONNECTION_TIMEOUT_S:
+                    logger.warning("serial bridge %s: connection timeout (no data for %ds)", self._port_desc(), CONNECTION_TIMEOUT_S)
+                    if self._loop and not self._loop.is_closed():
+                        self._loop.call_soon_threadsafe(self._schedule_reconnect)
+                    break
+        finally:
+            # Surface why the session ended: a silent reader exit looks identical to
+            # a healthy idle link from the outside, which made this hard to diagnose.
+            logger.info(
+                "serial bridge %s: reader thread exiting (stop=%s connected=%s serial_open=%s)",
+                self._port_desc(), self._stop_event.is_set(), self.connected,
+                bool(self._serial and self._serial.is_open),
+            )
 
     def _on_raw_frame(self, data: bytes) -> None:
         env = pb.Envelope()
@@ -338,19 +347,26 @@ class SerialBridgeClient:
         if self._loop is None or self._loop.is_closed():
             return
 
-        if self._auth_challenge_future and not self._auth_challenge_future.done():
+        if self._auth_challenge_future is not None and not self._auth_challenge_future.done():
             kind = env.WhichOneof("msg")
             if kind == "auth_challenge":
                 self._loop.call_soon_threadsafe(self._auth_challenge_future.set_result, env)
-                return
-            if kind in ("auth_failed", "auth_ok"):
-                self._loop.call_soon_threadsafe(self._auth_ok_future.set_result, env)
                 return
             # Device still holds a valid session (UART has no disconnect signal), so
             # it replies to ClientHello with a snapshot rather than a challenge.
             if kind == "full_snapshot" and self._auth_already_future is not None \
                     and not self._auth_already_future.done():
                 self._loop.call_soon_threadsafe(self._auth_already_future.set_result, env)
+                return
+
+        # Checked separately from the challenge future: that one is cleared as soon
+        # as the challenge lands, so auth_ok/auth_failed would otherwise fall through
+        # to _dispatch_frame and be delivered as an ordinary frame, leaving the
+        # handshake to time out despite the bridge having answered.
+        if self._auth_ok_future is not None and not self._auth_ok_future.done():
+            kind = env.WhichOneof("msg")
+            if kind in ("auth_failed", "auth_ok"):
+                self._loop.call_soon_threadsafe(self._auth_ok_future.set_result, env)
                 return
 
         self._loop.call_soon_threadsafe(self._dispatch_frame, env, data)
@@ -392,8 +408,12 @@ class SerialBridgeClient:
         asyncio.ensure_future(self._on_frame(self, env, raw))
 
     def _schedule_reconnect(self) -> None:
-        if self._reconnect_task and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
+        # Called from the reader thread when the link goes quiet. Do NOT cancel the
+        # reconnect task from here: that task is currently inside _await_session_end()
+        # waiting for this very thread to finish, so cancelling it tears the session
+        # down and the client flaps instead of recovering. The task's own finally
+        # block handles teardown once _await_session_end() returns.
+        self._stop_event.set()
 
     def _send_envelope_sync(self, envelope: pb.Envelope) -> None:
         if self._serial is None or not self._serial.is_open:
