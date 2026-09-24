@@ -53,9 +53,15 @@ class TestCobsRoundTrip:
         assert decoded == data
 
     def test_decode_error_on_invalid(self):
-        """cobs.decode raises error on invalid input."""
+        """cobs.decode raises on genuinely malformed input.
+
+        Empty input is NOT an error: it is a valid COBS frame that decodes to
+        empty, so asserting a raise on b"" fails against every cobs release. Use
+        input that actually violates the encoding: a length code claiming more
+        bytes than remain.
+        """
         with pytest.raises(cobs.DecodeError):
-            cobs.decode(b"")
+            cobs.decode(b"\x05\x01\x02")
 
 
 @pytest.mark.skipif(not HAS_PROTOBUF, reason="protobuf not available")
