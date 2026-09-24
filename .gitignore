@@ -23,3 +23,7 @@ logs/
 # Temp work belongs here, inside the repo -- not in ad-hoc folders elsewhere.
 .local/
 *.local.log
+
+# Support tooling lives outside the repo (see /home/ben/projects/esptree/tools).
+# Kept untracked so product code stays clean and the TCP serial bridge is not shipped.
+tools/
