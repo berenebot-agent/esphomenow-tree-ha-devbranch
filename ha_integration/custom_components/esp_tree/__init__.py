@@ -193,7 +193,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = True
-    if entry.data.get(CONF_TYPE) == "remote":
+    # Hub entries forward platforms too (see async_setup_entry), so they must unload
+    # them as well. Previously only "remote" entries unloaded, so reloading a hub left
+    # its platforms loaded and the re-setup failed with
+    # "Config entry ESP Tree (...) for esp_tree.sensor has already been setup!",
+    # which silently dropped every bridge entity until a full HA restart.
+    if entry.data.get(CONF_TYPE) in ("remote", "hub"):
         unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         await hass.data[DOMAIN]["runtime"].remove_entry(entry)

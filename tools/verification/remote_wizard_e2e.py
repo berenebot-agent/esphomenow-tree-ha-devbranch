@@ -236,6 +236,20 @@ def main() -> int:
           ".icon-btn.danger" in _ui)
     check("Remove is offered only for offline remotes", "this.node.online\n                ? nothing" in _ui)
 
+    # 14. The hub entry forwards platforms at setup, so it must unload them too.
+    #     Without this, reloading the hub left platforms loaded and re-setup failed
+    #     with "has already been setup!", dropping every bridge entity.
+    _init = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "ha_integration", "custom_components", "esp_tree",
+        "__init__.py")).read()
+    _unload = _init[_init.index("async def async_unload_entry"):_init.index("async def async_remove_config_entry_device")]
+    check("hub entries unload their platforms on reload",
+          'in ("remote", "hub")' in _unload)
+    _setup = _init[_init.index("async def async_setup_entry"):_init.index("async def async_unload_entry")]
+    _hub_arm = _setup[_setup.index('CONF_TYPE) == "hub"'):_setup.index('CONF_TYPE) == "remote"')]
+    check("setup forwards platforms for hub entries",
+          "async_forward_entry_setups(entry, PLATFORMS)" in _hub_arm)
+
     print("=" * 70)
     passed = 0
     for name, ok, detail in RESULTS:
