@@ -28,16 +28,21 @@ def _setup_mocks():
 
     for name in ["voluptuous"]:
         if name not in sys.modules:
-            sys.modules[name] = types.ModuleType(name)
+            vol = types.ModuleType(name)
+            vol.Schema = lambda value: value
+            vol.Required = lambda value, **kwargs: value
+            vol.Optional = lambda value, **kwargs: value
+            sys.modules[name] = vol
 
     ha = types.ModuleType("homeassistant")
     ha.core = types.ModuleType("homeassistant.core")
     ha.core.HomeAssistant = type("HomeAssistant", (), {})
+    ha.core.ServiceCall = type("ServiceCall", (), {})
     ha.core.callback = lambda f: f
     ha.config_entries = types.ModuleType("homeassistant.config_entries")
     ha.config_entries.ConfigEntry = type("ConfigEntry", (), {})
-    ha.config_entries.SOURCE_INTEGRATION_DISCOVERY = "integration_discovery"
     ha.config_entries.SOURCE_IMPORT = "import"
+    ha.config_entries.SOURCE_INTEGRATION_DISCOVERY = "integration_discovery"
     ha.helpers = types.ModuleType("homeassistant.helpers")
     ha.helpers.entity = types.ModuleType("homeassistant.helpers.entity")
     ha.helpers.entity.Entity = type("Entity", (), {"async_write_ha_state": lambda self: None})
@@ -45,6 +50,7 @@ def _setup_mocks():
     ha.helpers.device_registry.DeviceInfo = dict
     ha.helpers.device_registry.async_get = MagicMock()
     ha.helpers.device_registry.DeviceEntry = MagicMock
+    ha.helpers.device_registry.async_get = MagicMock()
     ha.helpers.entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
     ha.helpers.entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
     ha.helpers.update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")

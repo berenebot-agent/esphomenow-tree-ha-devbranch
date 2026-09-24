@@ -61,6 +61,8 @@ from .preflight import preflight_comparison
 from .protobuf.generated import esp_tree_runtime_pb2 as pb
 from .restart_status import integration_restart_decision
 from .yaml_scaffold import generate_scaffold
+from .ha_config_flow import configure_flow_payload, start_flow_payload
+from .flash_wizard import validate_board, validate_flash_name, validate_remote_network_credentials
 from .yaml_store import YAMLStore
 
 
@@ -942,18 +944,18 @@ def create_app() -> FastAPI:
         except Exception as exc:  # noqa: BLE001 - surface as a flow error
             raise RuntimeError(f"HA config flow request failed: {exc}") from exc
 
-    async def start_integration_flow(source: str, config: dict[str, str]) -> dict[str, Any]:
+    async def start_integration_flow() -> dict[str, Any]:
         return await config_flow_rest(
             "POST",
             "/config/config_entries/flow",
-            {"handler": "esp_tree", "context": {"source": source}, "data": config or {}},
+            start_flow_payload("esp_tree"),
         )
 
     async def configure_integration_flow(flow_id: str, config: dict[str, str]) -> dict[str, Any]:
         return await config_flow_rest(
             "POST",
             f"/config/config_entries/flow/{flow_id}",
-            {"user_input": config or {}},
+            configure_flow_payload(config),
         )
 
     async def request_ha_integration_config_flow() -> dict[str, Any]:
@@ -962,39 +964,25 @@ def create_app() -> FastAPI:
         attempts: list[dict[str, Any]] = []
         try:
             config = write_shared_integration_config()
-            result = await start_integration_flow("import", config)
-            attempts.append({"source": "import", "result": result})
+            # SOURCE_IMPORT is started by the integration's shared-config path in
+            # async_setup. The REST endpoint always starts a user flow and ignores
+            # caller-supplied context/data at initialization.
+            result = await start_integration_flow()
+            attempts.append({"source": "user", "result": result})
             logger.info(
-                "integration config flow result: type=%s reason=%s",
+                "integration user config flow result: type=%s reason=%s",
                 result.get("type") or "unknown",
                 result.get("reason") or "",
             )
             flow_id = str(result.get("flow_id") or "")
             if result.get("type") == "form" and flow_id:
                 result = await configure_integration_flow(flow_id, config)
-                attempts.append({"source": "import_configure", "result": result})
+                attempts.append({"source": "user_configure", "result": result})
                 logger.info(
-                    "integration import configure result: type=%s reason=%s",
+                    "integration user configure result: type=%s reason=%s",
                     result.get("type") or "unknown",
                     result.get("reason") or "",
                 )
-            if not integration_flow_complete(result):
-                result = await start_integration_flow("user", config)
-                attempts.append({"source": "user", "result": result})
-                logger.info(
-                    "integration user config flow result: type=%s reason=%s",
-                    result.get("type") or "unknown",
-                    result.get("reason") or "",
-                )
-                flow_id = str(result.get("flow_id") or "")
-                if result.get("type") == "form" and flow_id:
-                    result = await configure_integration_flow(flow_id, config)
-                    attempts.append({"source": "user_configure", "result": result})
-                    logger.info(
-                        "integration user configure result: type=%s reason=%s",
-                        result.get("type") or "unknown",
-                        result.get("reason") or "",
-                    )
             flow = {
                 "attempts": attempts,
                 "complete": integration_flow_complete(result),
@@ -1718,13 +1706,18 @@ def create_app() -> FastAPI:
         if not is_remote:
             if transport not in ("wifi", "serial"):
                 raise HTTPException(status_code=400, detail=f"unsupported transport: {transport}")
+            if transport == "serial" and not body.serial_port.strip():
+                raise HTTPException(status_code=400, detail="serial_port is required for serial transport")
+            if transport == "wifi" and (not body.wifi_ssid.strip() or not body.wifi_password):
+                raise HTTPException(status_code=400, detail="wifi_ssid and wifi_password are required for WiFi transport")
 
         logger.info("flash_wizard_submit: name=%s chip=%s transport=%s kind=%s", name, chip_name, transport, kind)
 
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
+        validate_flash_name(name, is_remote=is_remote, yaml_store=yaml_store, db=db)
         if not board_info.get("platform") or not board_info.get("board"):
             raise HTTPException(status_code=400, detail="board_info is required")
+
+        validate_board(chip_name, board_info, CHIP_NAME_TO_BOARD)
 
         node = {
             "esphome_name": name,
@@ -1757,10 +1750,6 @@ def create_app() -> FastAPI:
             else:
                 node["wifi_ssid_secret"] = "wifi_ssid"
                 node["wifi_password_secret"] = "wifi_password"
-        yaml_content, _ = generate_scaffold(node)
-        yaml_store.save_config(name, yaml_content)
-        logger.info("flash_wizard_submit: saved yaml config for %s", name)
-
         # A remote consumes the network's ESP-NOW credentials; it must never author
         # them. These live in secrets.yaml and the bridge firmware resolves them, so
         # writing them here would let a single remote flash silently re-identify the
@@ -1778,45 +1767,12 @@ def create_app() -> FastAPI:
             # Reject a remote that asks for a different network rather than quietly
             # using either value: the mismatch is exactly the failure that is hardest
             # to diagnose later (firmware that compiles but can never join).
-            if requested_network_id and configured_network_id and (
-                requested_network_id.upper() != configured_network_id.upper()
-            ):
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "network_id does not match the configured ESP-NOW network "
-                        f"({configured_network_id}). A remote must join the bridge's network; "
-                        "change the network by re-provisioning the bridge."
-                    ),
-                )
-            if requested_psk and configured_psk and requested_psk != configured_psk:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "psk does not match the configured ESP-NOW network. A remote must join "
-                        "the bridge's network; change it by re-provisioning the bridge."
-                    ),
-                )
+            validate_remote_network_credentials(
+                requested_network_id, requested_psk, configured_network_id, configured_psk
+            )
 
         secrets_to_merge: dict[str, str] = {}
         if is_remote:
-            if not configured_network_id or not configured_psk:
-                missing = [
-                    name
-                    for name, value in (
-                        ("espnow_network_id", configured_network_id),
-                        ("espnow_psk", configured_psk),
-                    )
-                    if not value
-                ]
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "no ESP-NOW credentials configured "
-                        f"({', '.join(missing)}); a remote cannot join without them. "
-                        "Add them to secrets.yaml, or provision a bridge first."
-                    ),
-                )
             logger.info(
                 "flash_wizard_submit: remote %s will use the configured ESP-NOW network", name
             )
@@ -1831,6 +1787,11 @@ def create_app() -> FastAPI:
             # would only leave unused junk in secrets.yaml.
             secrets_to_merge["wifi_ssid"] = body.wifi_ssid
             secrets_to_merge["wifi_password"] = body.wifi_password
+
+        # Generate all content before the first filesystem or DB mutation.
+        yaml_content, _ = generate_scaffold(node)
+        yaml_store.save_config(name, yaml_content)
+        logger.info("flash_wizard_submit: saved yaml config for %s", name)
         if secrets_to_merge:
             yaml_store.merge_secrets(secrets_to_merge)
         logger.info("flash_wizard_submit: merged secrets for %s (remote=%s)", name, is_remote)
@@ -2334,6 +2295,14 @@ def create_app() -> FastAPI:
             return [r for r in raw if isinstance(r, dict)]
         return []
 
+    async def _retained_topology_nodes() -> list[dict[str, Any]]:
+        """Use durable retained records for offline removals without a live manager."""
+        nodes = await _retained_remotes()
+        active = db.get_active_bridge() or {}
+        if active.get("mac"):
+            nodes.append({"mac": active["mac"], "is_bridge": True, "online": False})
+        return nodes
+
     @app.delete("/api/topology/hide/{mac}")
     async def hide_device(mac: str) -> dict[str, Any]:
         target_mac = validate_mac_or_400(mac)
@@ -2354,27 +2323,53 @@ def create_app() -> FastAPI:
         """
         target_mac = validate_mac_or_400(mac)
 
+        # The database is the authoritative bridge inventory. Never rely on the
+        # live topology to protect bridge records: it may be unavailable precisely
+        # when a bridge is offline.
+        bridge_macs = {
+            normalize_mac(str(bridge.get("mac") or ""))
+            for bridge in db.list_all_bridges()
+            if bridge.get("mac")
+        }
+        active_bridge = db.get_active_bridge() or {}
+        if active_bridge.get("mac"):
+            bridge_macs.add(normalize_mac(str(active_bridge["mac"])))
+        if target_mac in bridge_macs:
+            raise HTTPException(
+                status_code=409,
+                detail="that is the bridge, not a remote; only remotes can be removed.",
+            )
+
         manager = control_manager()
-        if manager:
-            try:
-                live = find_node_by_mac(await manager.topology(), target_mac)
-            except Exception:
-                live = None
-            if live and live.get("is_bridge"):
-                # The bridge is not a remote. Removing it would delete the bridge's
-                # own device row and drop the thing the whole network hangs off.
-                raise HTTPException(
-                    status_code=409,
-                    detail="that is the bridge, not a remote; only remotes can be removed.",
+        retained_source_available = bool(_retained_remotes_from_storage())
+        try:
+            live_nodes = await manager.topology() if manager else []
+            if manager:
+                live_macs = {normalize_mac(str(node.get("mac") or "")) for node in live_nodes}
+                live_nodes.extend(
+                    node for node in await _retained_remotes()
+                    if normalize_mac(str(node.get("mac") or "")) not in live_macs
                 )
-            if live and live.get("online", False):
+            else:
+                live_nodes = await _retained_topology_nodes()
+            live = find_node_by_mac(live_nodes, target_mac)
+        except Exception as exc:
+            if not retained_source_available:
                 raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        "this remote is currently online; removing it would only be undone "
-                        "by the next topology update. Hide it, or take it off the air first."
-                    ),
-                )
+                    status_code=503,
+                    detail=f"cannot verify live topology before removing remote: {exc}",
+                ) from exc
+            live = find_node_by_mac(_retained_remotes_from_storage(), target_mac)
+        if live is None or live.get("is_bridge"):
+            raise HTTPException(status_code=404, detail="remote not found in bridge or retained topology")
+        if live.get("online", False):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "this remote is currently online; removing it would only be undone "
+                    "by the next topology update. Hide it, or take it off the air first."
+                ),
+            )
 
         errors: list[str] = []
         forgot_in_integration = False
@@ -2396,6 +2391,11 @@ def create_app() -> FastAPI:
                 forgot_in_integration = True
             except Exception as exc:
                 errors.append(f"integration forget_remote failed: {exc}")
+        else:
+            errors.append("integration forget_remote unavailable: SUPERVISOR_TOKEN not available")
+
+        if errors:
+            raise HTTPException(status_code=502, detail="; ".join(errors))
 
         # Add-on side: device row, its jobs, and any hidden marker.
         try:
@@ -2405,7 +2405,7 @@ def create_app() -> FastAPI:
         except Exception as exc:
             errors.append(f"local cleanup failed: {exc}")
 
-        if errors and not forgot_in_integration:
+        if errors:
             raise HTTPException(status_code=502, detail="; ".join(errors))
 
         logger.info(

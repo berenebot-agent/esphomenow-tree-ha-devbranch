@@ -21,5 +21,8 @@ class RuntimeStore:
     async def save(self, data: dict[str, Any]) -> None:
         self._store.async_delay_save(lambda: data, 5)
 
+    async def save_now(self, data: dict[str, Any]) -> None:
+        await self._store.async_save(data)
+
     async def clear(self) -> None:
         await self._store.async_remove()

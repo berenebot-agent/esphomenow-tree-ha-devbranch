@@ -195,7 +195,7 @@ class EspTreeRuntime:
         self.remotes.pop(remote_mac, None)
         for key in [entity_key for entity_key in self.entities if entity_key[0] == remote_mac]:
             self.entities.pop(key, None)
-        self.hass.async_create_task(self.store.save(self._store_data()))
+        await self.store.save_now(self._store_data())
 
     def subscribe_entity(self, remote_mac: str, object_id: str, cb: Callable[[], None]) -> Callable[[], None]:
         key = (norm_mac(remote_mac), object_id)

@@ -53,7 +53,7 @@ class SerialBridgeClient:
         self._pending_ota_start: dict[str, asyncio.Future[pb.OtaAccepted]] = {}
         self._auth_challenge_future: asyncio.Future[pb.Envelope] | None = None
         self._auth_ok_future: asyncio.Future[pb.Envelope] | None = None
-        self._auth_already_future: asyncio.Future[pb.Envelope] | None = None
+        self._auth_pending_frames: list[tuple[pb.Envelope, bytes]] = []
         self._ota_chunk_request_handler: Callable[[pb.OtaChunkRequest], Awaitable[None]] | None = None
         self._ota_status_handler: Callable[[pb.OtaStatus], Awaitable[None]] | None = None
         self._ota_aborted_handler: Callable[[pb.OtaAborted], Awaitable[None]] | None = None
@@ -192,53 +192,32 @@ class SerialBridgeClient:
         )
         self._reader_thread.start()
 
+        auth_challenge_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
+        auth_ok_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
+        self._auth_challenge_future = auth_challenge_future
+        self._auth_ok_future = auth_ok_future
+        self._auth_pending_frames = []
         client_hello = pb.Envelope(
             request_id=uuid.uuid4().hex,
             api_version=API_VERSION,
-            # ClientHello has no client_kind field (see esp_tree_runtime.proto:
-            # request_full_snapshot / integration_version / known_remote_schemas).
-            # Passing it raised ValueError before a single byte was sent, so the
-            # client connected and immediately dropped, retrying forever.
             client_hello=pb.ClientHello(request_full_snapshot=True, integration_version="addon"),
         )
+        # Install the receiver before writing: a fast device may challenge before
+        # the write call returns.
         self._send_envelope_sync(client_hello)
 
-        auth_challenge_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
-        auth_ok_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
-        # The device keeps its AUTHENTICATED state across serial reconnects: a UART
-        # has no connection signal, so the bridge cannot tell that the add-on went
-        # away. On reconnect it therefore answers ClientHello with a full_snapshot
-        # instead of a challenge. Wait for either, or the client times out, drops
-        # the link and reconnects forever.
-        already_authed_future: asyncio.Future[pb.Envelope] = self._loop.create_future()
-        self._auth_challenge_future = auth_challenge_future
-        self._auth_ok_future = auth_ok_future
-        self._auth_already_future = already_authed_future
-
         try:
-            done, _ = await asyncio.wait(
-                {auth_challenge_future, already_authed_future},
-                timeout=10,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            await asyncio.wait_for(asyncio.shield(auth_challenge_future), timeout=10)
+        except asyncio.TimeoutError as exc:
+            self._auth_challenge_future = None
+            self._auth_ok_future = None
+            raise RuntimeError("timeout waiting for auth_challenge from bridge") from exc
+        except RuntimeError as exc:
+            self._auth_challenge_future = None
+            self._auth_ok_future = None
+            raise RuntimeError("authentication failed before challenge") from exc
         finally:
             self._auth_challenge_future = None
-            self._auth_already_future = None
-
-        if already_authed_future in done:
-            # Session was still valid on the device; no challenge/response needed.
-            logger.info("serial bridge %s: device already authenticated, resuming session", self._port_desc())
-            first_env = already_authed_future.result()
-            self._auth_ok_future = None
-            self.connected = True
-            await self._on_connection_change(self, True)
-            if first_env is not None:
-                asyncio.ensure_future(self._on_frame(self, first_env, first_env.SerializeToString()))
-            await self._run_session()
-            return
-
-        if auth_challenge_future not in done:
-            raise RuntimeError("timeout waiting for auth_challenge from bridge")
 
         challenge_env = auth_challenge_future.result()
         challenge = challenge_env.auth_challenge
@@ -277,6 +256,9 @@ class SerialBridgeClient:
         self.bridge_mac = normalize_mac(auth_env.auth_ok.bridge.bridge_mac)
         self._connected = True
         await self._on_connection_change(self, True)
+        pending_frames, self._auth_pending_frames = self._auth_pending_frames, []
+        for pending_env, pending_raw in pending_frames:
+            self._dispatch_frame(pending_env, pending_raw)
         await self._run_session()
 
     async def _keepalive_loop(self) -> None:
@@ -411,11 +393,12 @@ class SerialBridgeClient:
             if kind == "auth_challenge":
                 self._loop.call_soon_threadsafe(self._auth_challenge_future.set_result, env)
                 return
-            # Device still holds a valid session (UART has no disconnect signal), so
-            # it replies to ClientHello with a snapshot rather than a challenge.
-            if kind == "full_snapshot" and self._auth_already_future is not None \
-                    and not self._auth_already_future.done():
-                self._loop.call_soon_threadsafe(self._auth_already_future.set_result, env)
+            if kind == "auth_failed":
+                self._loop.call_soon_threadsafe(self._auth_challenge_future.set_exception, RuntimeError("authentication failed before challenge"))
+                return
+            if kind in ("full_snapshot", "auth_ok"):
+                # Do not accept these as proof of authentication. The bridge
+                # sends the snapshot after auth_ok, following the fresh HMAC.
                 return
 
         # Checked separately from the challenge future: that one is cleared as soon
@@ -427,6 +410,10 @@ class SerialBridgeClient:
             if kind in ("auth_failed", "auth_ok"):
                 self._loop.call_soon_threadsafe(self._auth_ok_future.set_result, env)
                 return
+            # Frames immediately following auth_ok can race the coroutine that
+            # observes that future. Buffer them and dispatch only after auth_ok.
+            self._loop.call_soon_threadsafe(self._auth_pending_frames.append, (env, data))
+            return
 
         self._loop.call_soon_threadsafe(self._dispatch_frame, env, data)
 

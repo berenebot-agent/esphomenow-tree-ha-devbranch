@@ -2,10 +2,60 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+import asyncio
 
 import pytest
 
 from app import models
+
+
+def test_ha_config_flow_rest_payloads_match_core_contract() -> None:
+    from app.ha_config_flow import configure_flow_payload, start_flow_payload
+
+    config = {"addon_url": "http://127.0.0.1:8099", "integration_token": "secret"}
+    assert start_flow_payload("esp_tree") == {"handler": "esp_tree"}
+    assert configure_flow_payload(config) == config
+    assert configure_flow_payload(None) == {}
+
+
+@pytest.mark.asyncio
+async def test_serial_auth_does_not_accept_snapshot_as_authentication(monkeypatch) -> None:
+    from app import bridge_serial_client as serial_client
+    from app.models import BridgeTarget
+    from app.protobuf.generated import esp_tree_runtime_pb2 as pb
+
+    client = serial_client.SerialBridgeClient(
+        "bridge-1", BridgeTarget(host="", transport="serial", serial_port="/dev/null", api_key="key"),
+        on_frame=AsyncMock(), on_connection_change=AsyncMock(),
+    )
+    client._loop = asyncio.get_running_loop()
+    challenge_future = client._loop.create_future()
+    client._auth_challenge_future = challenge_future
+    snapshot = pb.Envelope(full_snapshot=pb.FullSnapshot())
+    client._on_raw_frame(snapshot.SerializeToString())
+    await asyncio.sleep(0)
+    assert client.connected is False
+    assert not challenge_future.done()
+
+
+def test_serial_auth_buffers_snapshot_until_auth_ok() -> None:
+    from app import bridge_serial_client as serial_client
+    from app.models import BridgeTarget
+    from app.protobuf.generated import esp_tree_runtime_pb2 as pb
+
+    client = serial_client.SerialBridgeClient(
+        "bridge-1", BridgeTarget(host="", transport="serial", serial_port="/dev/null", api_key="key"),
+        on_frame=AsyncMock(), on_connection_change=AsyncMock(),
+    )
+    client._loop = asyncio.new_event_loop()
+    client._auth_ok_future = client._loop.create_future()
+    snapshot = pb.Envelope(full_snapshot=pb.FullSnapshot())
+    client._on_raw_frame(snapshot.SerializeToString())
+    client._loop.run_until_complete(asyncio.sleep(0))
+    assert len(client._auth_pending_frames) == 1
+    assert not client.connected
+    client._loop.close()
 
 
 def test_announcing_is_active_flash_status() -> None:

@@ -217,6 +217,23 @@ async def async_remove_config_entry_device(
     return await hass.config_entries.async_remove(config_entry.entry_id)
 
 
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear retained runtime data when a remote config entry is deleted."""
+    if entry.data.get(CONF_TYPE) != "remote":
+        return
+    remote_mac = entry.data.get("remote_mac")
+    if not remote_mac:
+        return
+    domain_data = hass.data.get(DOMAIN, {})
+    runtime = domain_data.get("runtime")
+    if runtime:
+        await runtime.forget_remote(remote_mac)
+    registry = dr.async_get(hass)
+    device = registry.async_get_device(identifiers={(DOMAIN, remote_mac)})
+    if device:
+        registry.async_remove_device(device.id)
+
+
 async def cleanup_integration(hass: HomeAssistant, *, remove_hub: bool = False) -> None:
     domain_data = hass.data.get(DOMAIN)
     if not domain_data:

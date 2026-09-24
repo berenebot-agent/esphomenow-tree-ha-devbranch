@@ -17,6 +17,7 @@
 - [ ] Auth succeeds, topology syncs
 - [ ] Commands round-trip correctly
 - [ ] Reconnect works after cable unplug/replug
+- [ ] Reconnect during retained authenticated session requests a new challenge; snapshot alone never reconnects the client
 - [ ] Port rename hotplug (`/dev/ttyUSB0` → `/dev/ttyUSB1`)
 - [ ] 60s connection timeout works
 

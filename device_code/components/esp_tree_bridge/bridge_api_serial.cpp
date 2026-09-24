@@ -119,6 +119,8 @@ struct BridgeApiSerialTransport::Impl {
 
   void reset_auth() {
     auth_state = SerialAuthState::WAITING_HELLO;
+    last_data_ms = 0;
+    last_heartbeat_ms = 0;
     rx_buffer.clear();
     if (bridge != nullptr) {
       bridge->clear_ota_transport_callbacks(owner);
@@ -126,6 +128,14 @@ struct BridgeApiSerialTransport::Impl {
   }
 
   void handle_envelope(const runtime_pb::ParsedEnvelope &env) {
+    // The UART has no disconnect signal. A fresh ClientHello must therefore
+    // invalidate any retained session and prove possession of the API key again.
+    if (env.msg_field == runtime_pb::CLIENT_HELLO) {
+      reset_auth();
+      send_auth_challenge();
+      return;
+    }
+
     if (auth_state == SerialAuthState::WAITING_HELLO || auth_state == SerialAuthState::CHALLENGE_SENT) {
       if (env.msg_field == runtime_pb::AUTH_RESPONSE) {
         runtime_pb::ParsedAuthResponse response;
@@ -142,6 +152,11 @@ struct BridgeApiSerialTransport::Impl {
           bridge->set_ota_transport_callbacks(owner);
         }
         send_auth_ok(env.request_id);
+        if (bridge != nullptr) {
+          std::vector<uint8_t> snapshot;
+          bridge->api_runtime_encode_full_snapshot(env.request_id, snapshot);
+          send_cobs_frame(snapshot);
+        }
         ESP_LOGI(TAG, "Serial client authenticated");
         return;
       }
@@ -154,12 +169,7 @@ struct BridgeApiSerialTransport::Impl {
 
     last_data_ms = millis();
 
-    if (env.msg_field == runtime_pb::CLIENT_HELLO) {
-      if (bridge == nullptr) return;
-      std::vector<uint8_t> snapshot;
-      bridge->api_runtime_encode_full_snapshot(env.request_id, snapshot);
-      send_cobs_frame(snapshot);
-    } else if (env.msg_field == runtime_pb::PING) {
+    if (env.msg_field == runtime_pb::PING) {
       const uint64_t monotonic = runtime_pb::ping_monotonic_ms(env.msg_data, env.msg_len);
       std::vector<uint8_t> pong;
       runtime_pb::envelope(pong, env.request_id, runtime_pb::PONG, [&](runtime_pb::Writer &w) {
