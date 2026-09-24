@@ -250,6 +250,14 @@ def main() -> int:
     check("setup forwards platforms for hub entries",
           "async_forward_entry_setups(entry, PLATFORMS)" in _hub_arm)
 
+    # 15. A serial bridge has no TCP host/port, so the websocket key validator cannot
+    #     reach it. Validating anyway built "ws://:80/..." and 400'd, which made a
+    #     serial bridge's api_key permanently un-editable in Settings.
+    _val = _srv[_srv.index("async def validate_bridge_if_possible"):]
+    _val = _val[:_val.index("async def reconnect_bridge")]
+    check("serial bridges skip the TCP api_key validator",
+          '"serial"' in _val and "transport" in _val)
+
     print("=" * 70)
     passed = 0
     for name, ok, detail in RESULTS:

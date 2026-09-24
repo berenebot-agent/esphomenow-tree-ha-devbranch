@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.298")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.299")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -559,6 +559,12 @@ def create_app() -> FastAPI:
     async def validate_bridge_if_possible(bridge: dict[str, Any]) -> None:
         api_key = str(bridge.get("api_key") or "")
         if not api_key:
+            return
+        # A serial bridge is reached over a byte stream (e.g. socket://host:port), not
+        # TCP host/port, so the websocket validator cannot reach it and would build
+        # "ws://:80/...". Skip validation there - the transport handshake is the real
+        # check, and failing here made the bridge's api_key permanently un-editable.
+        if str(bridge.get("transport") or "wifi") == "serial":
             return
         host = str(bridge.get("host") or "").strip()
         port = int(bridge.get("port") or 80)
