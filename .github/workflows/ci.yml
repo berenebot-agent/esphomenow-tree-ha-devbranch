@@ -89,13 +89,21 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pytest pytest-asyncio PyYAML
 
-      - name: Run regression tests for reviewed fixes
+      # Run the add-on and integration suites in separate pytest processes.
+      # ha_integration/tests/conftest.py replaces `google.protobuf` in sys.modules
+      # with a stub during collection; sharing a process breaks the add-on
+      # protobuf import (esp_tree_runtime_pb2.py).
+      - name: Run add-on regression tests
         run: |
           python -m pytest -q \
             test/tests/test_v2_ota.py::test_ha_config_flow_rest_payloads_match_core_contract \
             test/tests/test_v2_ota.py::test_serial_auth_does_not_accept_snapshot_as_authentication \
             test/tests/test_v2_ota.py::test_serial_auth_buffers_snapshot_until_auth_ok \
-            test/tests/test_flash_wizard_validation.py \
+            test/tests/test_flash_wizard_validation.py
+
+      - name: Run integration regression tests
+        run: |
+          python -m pytest -q \
             ha_integration/tests/test_remote_forget.py
 
   required:
