@@ -23,6 +23,12 @@ from .protobuf.generated import esp_tree_runtime_pb2 as pb
 logger = logging.getLogger(__name__)
 
 CONNECTION_TIMEOUT_S = 60
+# Send a Ping when the link has been idle this long. Must be comfortably below
+# CONNECTION_TIMEOUT_S so a quiet-but-healthy link keeps refreshing the reader's
+# no-data timer.
+KEEPALIVE_INTERVAL_S = 20
+# How long to wait for the Pong before giving up on this keepalive tick.
+KEEPALIVE_PONG_TIMEOUT_S = 5.0
 SERIAL_READ_TIMEOUT = 0.1
 
 
@@ -228,7 +234,7 @@ class SerialBridgeClient:
             await self._on_connection_change(self, True)
             if first_env is not None:
                 asyncio.ensure_future(self._on_frame(self, first_env, first_env.SerializeToString()))
-            await self._await_session_end()
+            await self._run_session()
             return
 
         if auth_challenge_future not in done:
@@ -271,7 +277,60 @@ class SerialBridgeClient:
         self.bridge_mac = normalize_mac(auth_env.auth_ok.bridge.bridge_mac)
         self._connected = True
         await self._on_connection_change(self, True)
-        await self._await_session_end()
+        await self._run_session()
+
+    async def _keepalive_loop(self) -> None:
+        """Ping the bridge while the link is idle.
+
+        A serial link has no protocol-level keepalive and the bridge only speaks when
+        it has something to send, so a healthy-but-quiet session looks identical to a
+        dead one: the reader's no-data timer hits CONNECTION_TIMEOUT_S and tears the
+        session down. The websocket client gets this for free from the websockets
+        library's ping_interval; the serial client has to do it itself. Without this
+        a connected serial bridge flaps on a fixed cycle (observed: disconnect
+        "after 175B" every ~92s).
+        """
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                return
+            if not self.connected or self._stop_event.is_set():
+                continue
+            idle = time.monotonic() - self._last_data_time
+            if idle < KEEPALIVE_INTERVAL_S:
+                continue
+            try:
+                pong = await asyncio.wait_for(
+                    self.request(
+                        pb.Envelope(ping=pb.Ping(monotonic_ms=int(time.monotonic() * 1000))),
+                        timeout=KEEPALIVE_PONG_TIMEOUT_S,
+                    ),
+                    timeout=KEEPALIVE_PONG_TIMEOUT_S + 1.0,
+                )
+                if pong.WhichOneof("msg") != "pong":
+                    logger.debug(
+                        "serial bridge %s: keepalive got %s, not pong",
+                        self._port_desc(), pong.WhichOneof("msg"),
+                    )
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                # Don't tear down here: a genuinely dead link is caught by the
+                # reader's CONNECTION_TIMEOUT_S. Log and retry on the next tick.
+                logger.debug("serial bridge %s: keepalive ping failed: %s", self._port_desc(), exc)
+
+    async def _run_session(self) -> None:
+        """Own the session for its whole life: keepalive + wait for the reader to die."""
+        keepalive = asyncio.ensure_future(self._keepalive_loop())
+        try:
+            await self._await_session_end()
+        finally:
+            keepalive.cancel()
+            try:
+                await keepalive
+            except (asyncio.CancelledError, Exception):
+                pass
 
     async def _await_session_end(self) -> None:
         """Hold the connection open while the reader thread owns the port.
