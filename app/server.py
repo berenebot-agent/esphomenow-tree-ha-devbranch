@@ -384,7 +384,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.286")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.287")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -737,11 +737,11 @@ def create_app() -> FastAPI:
             entry_loaded = True
         bridge_count = int((status or {}).get("bridge_count") or 0)
         remote_count = int((status or {}).get("remote_count") or 0)
-        # The runtime keeps offline remotes from previous sessions, so remote_count
-        # alone overstates what is actually live. Fall back to the total when the
-        # integration is too old to report the split.
-        remotes_online = (status or {}).get("remotes_online")
-        remotes_online = remote_count if remotes_online is None else int(remotes_online)
+        # Pass the online split through as-is, including absent. Remote_count includes
+        # remotes retained from earlier sessions, so substituting it here would present
+        # the retained total as live. Let the UI say "known" when the split is missing.
+        remotes_online_raw = (status or {}).get("remotes_online")
+        remotes_online = None if remotes_online_raw is None else int(remotes_online_raw)
         ha_status_version = str((status or {}).get("version") or "")
         return {
             "installed": installed,
