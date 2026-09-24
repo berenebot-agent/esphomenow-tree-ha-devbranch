@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.296")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.297")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -2354,7 +2354,14 @@ def create_app() -> FastAPI:
                 live = find_node_by_mac(await manager.topology(), target_mac)
             except Exception:
                 live = None
-            if live and not live.get("is_bridge") and live.get("online", False):
+            if live and live.get("is_bridge"):
+                # The bridge is not a remote. Removing it would delete the bridge's
+                # own device row and drop the thing the whole network hangs off.
+                raise HTTPException(
+                    status_code=409,
+                    detail="that is the bridge, not a remote; only remotes can be removed.",
+                )
+            if live and live.get("online", False):
                 raise HTTPException(
                     status_code=409,
                     detail=(

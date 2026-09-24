@@ -219,6 +219,12 @@ def main() -> int:
           '"esp_tree"' in _rm and '"forget_remote"' in _rm)
     check("removal refuses a remote that is still online",
           'currently online' in _rm)
+    # The bridge is not a remote. An earlier version used `not is_bridge and online`,
+    # which let a bridge through and deleted the bridge's own device row.
+    check("removal refuses the bridge explicitly",
+          'that is the bridge, not a remote' in _rm)
+    check("the bridge guard does not exclude bridges",
+          'not live.get("is_bridge")' not in _rm)
     check("removal clears the local device row",
           "db.delete_device(target_mac)" in _rm)
     check("removal also clears any hidden marker",
