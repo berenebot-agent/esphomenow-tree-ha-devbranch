@@ -97,9 +97,10 @@ def main() -> int:
     # 8. The placeholder MAC must differ from the bridge placeholder, or a remote
     #    compile overwrites the in-flight bridge's device row (mac is the PK).
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    server_py = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "app", "server.py")
     try:
         import re as re2
-        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "app", "server.py")).read()
+        src = open(server_py).read()
         m_bridge = re2.search(r'PLACEHOLDER_MAC = "([^"]+)"', src)
         m_remote = re2.search(r'REMOTE_PLACEHOLDER_MAC = "([^"]+)"', src)
         check("bridge + remote placeholder MACs are distinct",
@@ -107,6 +108,36 @@ def main() -> int:
               f"{(m_bridge and m_bridge.group(1))} vs {(m_remote and m_remote.group(1))}")
     except Exception as exc:
         check("bridge + remote placeholder MACs are distinct", False, str(exc))
+
+    # 9. The transport guard must not apply to remotes. The wizard sends
+    #    transport="espnow", which is not in (wifi, serial); validating it for a
+    #    remote rejects the wizard's own submit with 400 (observed live).
+    try:
+        src = open(server_py).read()
+        idx = src.find("unsupported transport")
+        window = src[max(0, idx - 700):idx]
+        check(
+            "transport validation is skipped for remotes",
+            "if not is_remote" in window,
+            "the transport check is not guarded by is_remote; a remote submit will 400",
+        )
+    except Exception as exc:
+        check("transport validation is skipped for remotes", False, str(exc))
+
+    # 10. A remote submit must not create a bridges row.
+    try:
+        src = open(server_py).read()
+        seg = src[src.find("async def flash_wizard_submit"):]
+        seg = seg[: seg.find("async def flash_wizard_status")]
+        add_bridge_pos = seg.find("db.add_bridge(")
+        guard_pos = seg.find("if not is_remote:")
+        check(
+            "add_bridge is guarded by 'not is_remote'",
+            add_bridge_pos != -1 and guard_pos != -1 and guard_pos < add_bridge_pos,
+            f"guard@{guard_pos} add_bridge@{add_bridge_pos}",
+        )
+    except Exception as exc:
+        check("add_bridge is guarded by 'not is_remote'", False, str(exc))
 
     print("=" * 70)
     passed = 0

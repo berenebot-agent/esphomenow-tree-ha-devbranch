@@ -176,6 +176,8 @@ export class EspRemoteWizard extends LitElement {
     this.flashStatus = 'starting';
     this.flashLog = [];
     try {
+      // Flashing targets the compiled config, which is keyed by esphome_name, so
+      // the synthetic placeholder MAC from submit is the correct handle here.
       await api.startSerialFlash(this.mac, this.selectedPort);
       const es = api.streamSerialFlashLogs(
         this.mac,

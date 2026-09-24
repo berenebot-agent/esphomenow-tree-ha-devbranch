@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.288")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.289")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1703,11 +1703,15 @@ def create_app() -> FastAPI:
         ota_password = body.ota_password.strip() or secrets_mod.token_urlsafe(24)
         transport = (body.transport or "wifi").strip().lower()
         kind = (body.kind or "bridge").strip().lower()
-        if transport not in ("wifi", "serial"):
-            raise HTTPException(status_code=400, detail=f"unsupported transport: {transport}")
         if kind not in ("bridge", "remote"):
             raise HTTPException(status_code=400, detail=f"unsupported kind: {kind}")
         is_remote = kind == "remote"
+        # Transport only means something for a bridge. A remote is ESP-NOW-only and
+        # has no host and no UART, so validating its transport would reject the
+        # wizard's own payload for no benefit.
+        if not is_remote:
+            if transport not in ("wifi", "serial"):
+                raise HTTPException(status_code=400, detail=f"unsupported transport: {transport}")
 
         logger.info("flash_wizard_submit: name=%s chip=%s transport=%s kind=%s", name, chip_name, transport, kind)
 
