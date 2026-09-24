@@ -143,6 +143,8 @@ export class EspRemoteWizard extends LitElement {
     try {
       const res = await api.submitFlashWizard({
         name: this.name.trim(),
+        // Send the resolved credentials back so the server can verify this remote is
+        // joining the configured network. A remote never writes secrets.yaml.
         network_id: this.networkId.trim(),
         psk: this.psk.trim(),
         // A remote has no WiFi: leave these empty so nothing wifi-shaped is written.

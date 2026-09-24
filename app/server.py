@@ -388,7 +388,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.294")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.295")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -1755,33 +1755,68 @@ def create_app() -> FastAPI:
         yaml_store.save_config(name, yaml_content)
         logger.info("flash_wizard_submit: saved yaml config for %s", name)
 
-        secrets_to_merge = {
-            "espnow_network_id": body.network_id,
-            "espnow_psk": body.psk,
-        }
+        # A remote consumes the network's ESP-NOW credentials; it must never author
+        # them. These live in secrets.yaml and the bridge firmware resolves them, so
+        # writing them here would let a single remote flash silently re-identify the
+        # whole network and orphan every device already on it. Only a bridge submit
+        # (which defines the network) is allowed to write them.
+        configured_network_id = _secret_from_secrets_yaml("espnow_network_id") or str(
+            (db.get_active_bridge() or {}).get("network_id") or ""
+        ).strip()
+        configured_psk = _secret_from_secrets_yaml("espnow_psk")
+
+        requested_network_id = body.network_id.strip()
+        requested_psk = body.psk.strip()
+
         if is_remote:
-            # A remote must end up on the same ESP-NOW network as the bridge, so if
-            # the caller left either half empty, fall back to the configured values
-            # rather than writing a blank secret. A blank one produces firmware that
-            # compiles but can never join, which is far harder to diagnose.
-            # secrets.yaml is the authority (the bridge firmware reads !secret from
-            # it); the bridge row is only a fallback because it can hold a stale copy.
-            if not secrets_to_merge["espnow_network_id"]:
-                secrets_to_merge["espnow_network_id"] = _secret_from_secrets_yaml("espnow_network_id")
-            if not secrets_to_merge["espnow_network_id"]:
-                active_bridge = db.get_active_bridge() or {}
-                secrets_to_merge["espnow_network_id"] = str(active_bridge.get("network_id") or "").strip()
-            if not secrets_to_merge["espnow_psk"]:
-                secrets_to_merge["espnow_psk"] = _secret_from_secrets_yaml("espnow_psk")
-            missing = [k for k, v in secrets_to_merge.items() if not v]
-            if missing:
+            # Reject a remote that asks for a different network rather than quietly
+            # using either value: the mismatch is exactly the failure that is hardest
+            # to diagnose later (firmware that compiles but can never join).
+            if requested_network_id and configured_network_id and (
+                requested_network_id.upper() != configured_network_id.upper()
+            ):
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "no ESP-NOW credentials available for this remote "
-                        f"({', '.join(missing)}). Configure a bridge first, or add them to secrets.yaml."
+                        "network_id does not match the configured ESP-NOW network "
+                        f"({configured_network_id}). A remote must join the bridge's network; "
+                        "change the network by re-provisioning the bridge."
                     ),
                 )
+            if requested_psk and configured_psk and requested_psk != configured_psk:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "psk does not match the configured ESP-NOW network. A remote must join "
+                        "the bridge's network; change it by re-provisioning the bridge."
+                    ),
+                )
+
+        secrets_to_merge: dict[str, str] = {}
+        if is_remote:
+            if not configured_network_id or not configured_psk:
+                missing = [
+                    name
+                    for name, value in (
+                        ("espnow_network_id", configured_network_id),
+                        ("espnow_psk", configured_psk),
+                    )
+                    if not value
+                ]
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "no ESP-NOW credentials configured "
+                        f"({', '.join(missing)}); a remote cannot join without them. "
+                        "Add them to secrets.yaml, or provision a bridge first."
+                    ),
+                )
+            logger.info(
+                "flash_wizard_submit: remote %s will use the configured ESP-NOW network", name
+            )
+        else:
+            secrets_to_merge["espnow_network_id"] = requested_network_id
+            secrets_to_merge["espnow_psk"] = requested_psk
         if not is_remote:
             secrets_to_merge["bridge_api_key"] = api_key
             secrets_to_merge["ota_password"] = ota_password
@@ -1790,8 +1825,9 @@ def create_app() -> FastAPI:
             # would only leave unused junk in secrets.yaml.
             secrets_to_merge["wifi_ssid"] = body.wifi_ssid
             secrets_to_merge["wifi_password"] = body.wifi_password
-        yaml_store.merge_secrets(secrets_to_merge)
-        logger.info("flash_wizard_submit: merged secrets for %s", name)
+        if secrets_to_merge:
+            yaml_store.merge_secrets(secrets_to_merge)
+        logger.info("flash_wizard_submit: merged secrets for %s (remote=%s)", name, is_remote)
 
         nm = normalize_mac(PLACEHOLDER_MAC if not is_remote else REMOTE_PLACEHOLDER_MAC)
         try:

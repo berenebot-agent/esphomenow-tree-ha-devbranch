@@ -167,12 +167,11 @@ def main() -> int:
     import re as _re
     _srv = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__)))), "app", "server.py")).read()
-    check("submit falls back to the active bridge network_id for remotes",
-          "active_bridge.get(\"network_id\")" in _srv)
-    check("submit falls back to secrets.yaml for the remote PSK",
-          '_secret_from_secrets_yaml("espnow_psk")' in _srv)
-    check("submit rejects a remote with no credentials at all",
-          "no ESP-NOW credentials available for this remote" in _srv)
+    check("submit resolves configured credentials from secrets.yaml",
+          '_secret_from_secrets_yaml("espnow_network_id")' in _srv
+          and '_secret_from_secrets_yaml("espnow_psk")' in _srv)
+    check("submit falls back to the bridge row only if secrets.yaml lacks the id",
+          'or str(\n            (db.get_active_bridge() or {}).get("network_id") or ""' in _srv)
     check("there is a bridge network-credentials endpoint",
           '"/api/bridge/network-credentials"' in _srv)
     check("network-credentials reports its source (so the UI can explain)",
@@ -182,30 +181,33 @@ def main() -> int:
     check("chip registry is imported by the server",
           "from .compiler import CHIP_NAME_TO_BOARD, ESPHomeCompiler" in _srv)
 
-    # 12. secrets.yaml MUST beat the bridges table for ESP-NOW credentials. The
-    #     bridge firmware resolves !secret espnow_network_id from secrets.yaml, so
-    #     that is what the bridge is really running; the bridges row is a copy that
-    #     can go stale. Preferring the row flashes remotes onto a network the bridge
-    #     is not on, and they can never join.
-    _nc_start = _srv.index("async def bridge_network_credentials")
-    _nc_end = _srv.index("async def secrets_get", _nc_start)
-    _nc = _srv[_nc_start:_nc_end]
-    # Order matters: the FIRST assignment to network_id must be the secrets.yaml read.
-    # (The bridge row is read earlier into bridge_network_id purely as a local fallback,
-    # so comparing those two offsets would test nothing.)
-    # Anchor on the exact statement ("        network_id = "), or this matches the
-    # "bridge_network_id = ..." line that merely captures the fallback.
-    _first_assign = _nc.index("\n        network_id = ")
-    _stmt = _nc[_first_assign:_first_assign + 80].strip()
-    check("credentials prefer secrets.yaml over the bridge row",
-          _stmt.startswith('network_id = _secret_from_secrets_yaml("espnow_network_id")'),
-          _stmt[:70])
-    check("bridge row is only the fallback when secrets.yaml lacks the id",
-          "if not network_id:" in _nc and "_nic" not in _nc)
-    check("credentials expose a mismatch flag instead of hiding drift", '"mismatch"' in _nc)
-    check("submit resolves secrets.yaml before the bridge row",
-          _srv.index('_secret_from_secrets_yaml("espnow_network_id")', _srv.index("if is_remote:")) <
-          _srv.index('active_bridge.get("network_id")', _srv.index("if is_remote:")))
+    # 12. A remote must NEVER write network-wide ESP-NOW credentials. They live in
+    #     secrets.yaml and the bridge firmware resolves them, so a remote submit that
+    #     wrote them would silently re-identify the whole network and orphan every
+    #     device already on it (this actually happened during testing: test payloads
+    #     overwrote secrets.yaml via the global merge).
+    _submit_start = _srv.index("async def flash_wizard_submit")
+    _submit_end = _srv.index("async def flash_wizard_finalize", _submit_start)
+    _sub = _srv[_submit_start:_submit_end]
+    # The assignments must sit immediately in the bridge-only `else:` arm, never in
+    # the remote arm. Anchoring on that adjacency avoids a slice that accidentally
+    # swallows the else-branch (which made an earlier version of this check lie).
+    check("only the bridge (else) arm assigns espnow_network_id",
+          'else:\n            secrets_to_merge["espnow_network_id"] = requested_network_id' in _sub)
+    check("only the bridge (else) arm assigns espnow_psk",
+          'secrets_to_merge["espnow_psk"] = requested_psk\n        if not is_remote:' in _sub)
+    check("secrets are only merged when there is something to write",
+          "if secrets_to_merge:\n            yaml_store.merge_secrets" in _sub)
+    # The remote arm runs from "if is_remote:" up to the bridge-only "else:".
+    _remote_branch = _sub[_sub.index("if is_remote:"):_sub.index("else:\n            secrets_to_merge[\"espnow_network_id\"]")]
+    check("a remote requesting a different network_id is rejected",
+          "network_id does not match the configured ESP-NOW network" in _remote_branch)
+    check("a remote requesting a different psk is rejected",
+          "psk does not match the configured ESP-NOW network" in _remote_branch)
+    check("a remote with no configured credentials is rejected",
+          "no ESP-NOW credentials configured" in _remote_branch)
+    check("the remote arm has no espnow_* assignment at all",
+          "secrets_to_merge[\"espnow_network_id\"] = " not in _sub[: _sub.index("else:")])
 
     print("=" * 70)
     passed = 0
