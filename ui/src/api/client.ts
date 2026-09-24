@@ -221,6 +221,9 @@ export interface ConfiguredBridge {
   is_active: boolean;
   last_connected_at?: number;
   created_at?: number;
+  transport?: string;
+  serial_port?: string;
+  baud?: number;
 }
 
 export interface AppConfig {
@@ -236,6 +239,7 @@ export interface AppConfig {
     entry_count: number;
     bridge_count: number;
     remote_count: number;
+    remotes_online?: number;
     connected: boolean;
     version?: string;
   };

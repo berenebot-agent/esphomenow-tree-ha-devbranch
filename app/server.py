@@ -384,7 +384,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.284")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.285")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -737,6 +737,11 @@ def create_app() -> FastAPI:
             entry_loaded = True
         bridge_count = int((status or {}).get("bridge_count") or 0)
         remote_count = int((status or {}).get("remote_count") or 0)
+        # The runtime keeps offline remotes from previous sessions, so remote_count
+        # alone overstates what is actually live. Fall back to the total when the
+        # integration is too old to report the split.
+        remotes_online = (status or {}).get("remotes_online")
+        remotes_online = remote_count if remotes_online is None else int(remotes_online)
         ha_status_version = str((status or {}).get("version") or "")
         return {
             "installed": installed,
@@ -756,6 +761,7 @@ def create_app() -> FastAPI:
             "entry_states": [str(entry.get("state") or "") for entry in entries],
             "bridge_count": bridge_count,
             "remote_count": remote_count,
+            "remotes_online": remotes_online,
             "connected": connected,
             "ws_client_connected": ws_client_connected,
         }
@@ -2827,19 +2833,31 @@ def create_app() -> FastAPI:
 
     @app.get("/api/compile/container/status")
     async def container_status() -> dict[str, Any]:
-        esphome_bin = Path("/opt/esp-tree/venv/bin/esphome")
-        req_path = Path("/opt/esp-tree/requirements-compile.txt")
-        version = ""
-        if req_path.exists():
-            for line in req_path.read_text(encoding="utf-8").splitlines():
-                if line.startswith("esphome=="):
-                    version = line.split("==", 1)[1].strip()
-                    break
+        # ESPHome is provisioned lazily into a venv under the data dir, not baked
+        # into the image, so the old /opt/esp-tree/venv check reported "Unavailable"
+        # even when compiling worked fine. Report the same binary the compiler uses.
+        esphome_bin = Path(compiler._esphome_bin())
+        pinned = compiler._pinned_esphome_version()
+        installed = compiler._installed_esphome_version()
+
+        # The venv may exist on disk without a marker file (or vice versa) if a
+        # bootstrap was interrupted, so treat either as evidence it is there.
+        available = esphome_bin.exists() and esphome_bin.is_file()
+        if available and not installed:
+            installed = pinned
+
+        error = None
+        if not available:
+            error = (
+                "ESPHome is not installed yet — it is downloaded on first compile. "
+                "Start a compile to install it."
+            )
+
         return {
-            "image": "native-esphome",
-            "available": esphome_bin.exists(),
-            "tag": version,
-            "error": None if esphome_bin.exists() else "ESPHome venv is not installed in this image",
+            "image": "lazy-venv",
+            "available": available,
+            "tag": installed or pinned or "",
+            "error": error,
         }
 
     @app.delete("/api/compile/artifacts")

@@ -80,6 +80,11 @@ export class EspSettings extends LitElement {
     }
 
     const { installed, loaded, configured, connected, bridge_count, remote_count } = int;
+    // remote_count includes offline remotes kept from earlier sessions, so show the
+    // online split when the integration reports it. Otherwise "5 remotes" reads as
+    // five live devices when the bridge may only have one.
+    const online = int.remotes_online ?? remote_count;
+    const offline = remote_count - online;
 
     if (!installed) {
       return html`
@@ -133,7 +138,8 @@ export class EspSettings extends LitElement {
         </div>
         <div class="int-connected-counts">
           ${bridge_count > 0 ? html`<span>${bridge_count} ${bridge_count === 1 ? 'bridge' : 'bridges'}</span>` : nothing}
-          ${remote_count > 0 ? html`<span>${remote_count} ${remote_count === 1 ? 'remote' : 'remotes'}</span>` : nothing}
+          ${online > 0 ? html`<span>${online} ${online === 1 ? 'remote' : 'remotes'} online</span>` : nothing}
+          ${offline > 0 ? html`<span class="muted">${offline} offline</span>` : nothing}
         </div>
       </div>
     `;
@@ -170,6 +176,23 @@ export class EspSettings extends LitElement {
 
   private isBridgeActive(bridge: ConfiguredBridge): boolean {
     return !!bridge.is_active;
+  }
+
+  private isSerial(bridge: ConfiguredBridge): boolean {
+    return bridge.transport === 'serial';
+  }
+
+  // A serial bridge has no hostname/IP/port of its own: it is reached through a
+  // device or socket path. Label the columns sensibly rather than leaving blanks
+  // or pretending the path is an IP address.
+  private bridgeHostname(bridge: ConfiguredBridge): string {
+    if (this.isSerial(bridge)) return 'serial';
+    return bridge.hostname || '-';
+  }
+
+  private bridgeAddress(bridge: ConfiguredBridge): string {
+    if (this.isSerial(bridge)) return bridge.serial_port || '-';
+    return bridge.host || '-';
   }
 
   private async discover(): Promise<void> {
@@ -468,11 +491,11 @@ export class EspSettings extends LitElement {
               <thead>
                 <tr>
                   <th>Status</th>
+                  <th>Name</th>
                   <th>Hostname</th>
                   <th>IP</th>
                   <th>Port</th>
                   <th>Network ID</th>
-                  <th>Discovery</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -485,11 +508,14 @@ export class EspSettings extends LitElement {
                       </span>
                       ${this.isBridgeActive(bridge) ? html`<span class="active-badge">Active</span>` : nothing}
                     </td>
-                    <td>${bridge.hostname || '-'}</td>
-                    <td>${bridge.host}</td>
-                    <td>${bridge.port}</td>
+                    <td>
+                      ${bridge.name || '-'}
+                      ${this.isSerial(bridge) ? html`<span class="active-badge">Serial</span>` : nothing}
+                    </td>
+                    <td>${this.bridgeHostname(bridge)}</td>
+                    <td>${this.bridgeAddress(bridge)}</td>
+                    <td>${this.isSerial(bridge) ? '-' : (bridge.port || '-')}</td>
                     <td>${bridge.network_id || '-'}</td>
-                    <td>${bridge.discovered_via}</td>
                     <td class="actions-cell">
                       ${this.editingBridgeId === bridge.uuid ? html`
                         <input
