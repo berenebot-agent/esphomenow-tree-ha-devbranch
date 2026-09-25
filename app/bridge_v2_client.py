@@ -1080,6 +1080,27 @@ class BridgeV2Manager:
             remote_mac=normalize_mac(node["mac"]),
             session_id=snapshot.runtime.session_id,
         )
+        # Persist this remote's device row.
+        #
+        # The initial full_snapshot path upserts the whole topology, but a remote that
+        # joins LATER arrives here instead, and this path previously touched only the
+        # in-memory topology and routes. Its device row therefore never existed unless
+        # the remote happened to be on air when the bridge/add-on last connected.
+        #
+        # The visible symptom is inverted: /api/devices held only the bridge, the UI
+        # rendered no card for the remote that is genuinely online, and it DID render
+        # long-dead remotes restored from the integration store. A joined remote looked
+        # absent while absent ones looked present.
+        #
+        # Upsert just this node rather than the whole topology: passing every node here
+        # would rewrite the fleet's last_seen on each remote event.
+        asyncio.ensure_future(
+            asyncio.to_thread(
+                self._db.upsert_devices_from_topology,
+                [node],
+                bridge_mac or client.target.name,
+            )
+        )
 
     def _offline_batch_for_bridge(self, client: BridgeV2Client) -> pb.EventBatch:
         batch = pb.EventBatch()
