@@ -438,6 +438,49 @@ bool ESPTreeBridge::init_wifi_and_espnow_() {
       ESP_LOGE(TAG, "esp_wifi_set_mode failed: %s", esp_err_to_name(wifi_err));
       return false;
     }
+
+    // The driver must be STARTED, not merely initialised. esp_now_init() does not
+    // start it, and an initialised-but-stopped driver looks completely healthy from
+    // the outside: the component boots, the API/serial transport connects, the
+    // bridge reports online, and it is deaf on air. A remote then broadcasts
+    // DISCOVER into nothing, never receives DISCOVER_ANNOUNCE, and loops in
+    // discovery forever with no error on either side.
+    //
+    // In WiFi mode ESPHome's `wifi:` component starts the driver for us; in serial
+    // mode there is no `wifi:` block, so nothing ever did. Mirrors the sequence
+    // ESPHome's own espnow component runs on its no-wifi path:
+    //   init -> set_mode -> set_storage(RAM) -> set_ps(NONE) -> start -> disconnect
+    //
+    // set_storage(WIFI_STORAGE_RAM) keeps the driver from pulling stale AP
+    // credentials out of NVS, and WIFI_PS_NONE stops power-save duty cycling from
+    // swallowing ESP-NOW frames.
+    wifi_err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if (wifi_err != ESP_OK) {
+      ESP_LOGW(TAG, "esp_wifi_set_storage failed: %s", esp_err_to_name(wifi_err));
+    }
+    wifi_err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (wifi_err != ESP_OK) {
+      ESP_LOGW(TAG, "esp_wifi_set_ps failed: %s", esp_err_to_name(wifi_err));
+    }
+    wifi_err = esp_wifi_start();
+    if (wifi_err != ESP_OK) {
+      ESP_LOGE(TAG, "esp_wifi_start failed: %s", esp_err_to_name(wifi_err));
+      return false;
+    }
+    // Nothing is configured to connect to, so tolerate WIFI_NOT_CONNECT.
+    wifi_err = esp_wifi_disconnect();
+    if (wifi_err != ESP_OK && wifi_err != ESP_ERR_WIFI_NOT_CONNECT) {
+      ESP_LOGW(TAG, "esp_wifi_disconnect failed: %s", esp_err_to_name(wifi_err));
+    }
+
+    uint8_t started_channel = 0;
+    wifi_second_chan_t started_secondary = WIFI_SECOND_CHAN_NONE;
+    if (esp_wifi_get_channel(&started_channel, &started_secondary) == ESP_OK) {
+      ESP_LOGI(TAG, "WiFi driver started by bridge (serial mode, no wifi: component), channel=%u",
+               static_cast<unsigned>(started_channel));
+    } else {
+      ESP_LOGI(TAG, "WiFi driver started by bridge (serial mode, no wifi: component)");
+    }
   }
 
   if (esp_now_init() != ESP_OK) return false;
