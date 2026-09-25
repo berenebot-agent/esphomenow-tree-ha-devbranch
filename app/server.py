@@ -62,7 +62,14 @@ from .protobuf.generated import esp_tree_runtime_pb2 as pb
 from .restart_status import integration_restart_decision
 from .yaml_scaffold import generate_scaffold
 from .ha_config_flow import configure_flow_payload, start_flow_payload
-from .flash_wizard import validate_board, validate_flash_name, validate_remote_network_credentials
+from .flash_wizard import (
+    UNBUILDABLE_CHIP_REASON,
+    is_unbuildable_chip,
+    validate_board,
+    validate_flash_name,
+    validate_remote_chip_buildable,
+    validate_remote_network_credentials,
+)
 from .yaml_store import YAMLStore
 
 
@@ -1718,6 +1725,14 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="board_info is required")
 
         validate_board(chip_name, board_info, CHIP_NAME_TO_BOARD)
+        # A remote the compiler cannot build must be refused here, with the reason.
+        # Letting it through produces a multi-minute job that ends in a raw
+        # "#include ... No such file or directory" against a header that is absent
+        # by design, which reads as a broken toolchain rather than a known gap.
+        # Bridges are unaffected: only a remote scaffold omits the ota:/network:
+        # blocks that the ESP8266 receiver's OTA backend depends on.
+        if is_remote:
+            validate_remote_chip_buildable(chip_name, board_info)
 
         node = {
             "esphome_name": name,
@@ -3208,7 +3223,19 @@ def create_app() -> FastAPI:
         """
         return {
             "chips": [
-                {"chip_name": chip, **info}
+                {
+                    "chip_name": chip,
+                    **info,
+                    # Whether the scaffold can currently produce a config that
+                    # compiles. ESP8266 remote firmware is not buildable yet: its
+                    # receiver links ESPHome's ESP8266 OTA backend, which is only
+                    # copied into the build tree when `ota:`/`network:`/`wifi:` are
+                    # present, and the remote scaffold emits none of them. Marked
+                    # so the wizard can say so instead of surfacing a raw
+                    # "md5.h / ota_backend_esp8266.h: No such file" compiler error.
+                    "buildable": not is_unbuildable_chip(chip, info),
+                    "unbuildable_reason": UNBUILDABLE_CHIP_REASON.get(chip),
+                }
                 for chip, info in sorted(CHIP_NAME_TO_BOARD.items())
             ]
         }

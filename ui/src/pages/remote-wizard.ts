@@ -183,6 +183,10 @@ export class EspRemoteWizard extends LitElement {
   }
 
   private canSubmit(): boolean {
+    // A chip the API marks unbuildable must not be submittable: the job would run
+    // for minutes and end in a compiler error about a header that is absent by
+    // design. Refuse here and let the reason render under the chip field.
+    if (this.selectedChip?.buildable === false) return false;
     return Boolean(
       this.name.trim() && this.chipName && this.selectedChip && this.networkId.trim() && this.psk.trim(),
     );
@@ -405,12 +409,15 @@ export class EspRemoteWizard extends LitElement {
                       : html`<option value="">Select a chip…</option>`
                     }
                     ${this.chips.map(
-                      (c) => html`<option value=${c.chip_name} ?selected=${c.chip_name === this.chipName}>
-                            ${c.chip_name} — ${c.board}
+                      (c) => html`<option value=${c.chip_name} ?disabled=${c.buildable === false} ?selected=${c.chip_name === this.chipName}>
+                            ${c.chip_name} — ${c.board}${c.buildable === false ? ' (not buildable)' : ''}
                           </option>`,
                     )}
                   </select>
                   <small class="hint">Connect the remote to this computer by USB, then detect the chip automatically or select it manually.</small>
+                  ${this.selectedChip && this.selectedChip.buildable === false
+                    ? html`<span class="hint warn-text">${this.selectedChip.unbuildable_reason}</span>`
+                    : nothing}
                 </label>
 
                 <div class="chip-detect">

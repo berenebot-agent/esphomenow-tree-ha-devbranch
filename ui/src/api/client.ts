@@ -217,6 +217,10 @@ export interface ChipInfo {
   board: string;
   framework: string;
   variant?: string;
+  /** False when the wizard must not offer this chip: the config would not compile. */
+  buildable?: boolean;
+  /** Why the chip cannot be used, shown in place of a raw compiler error. */
+  unbuildable_reason?: string;
 }
 
 export interface ConfiguredBridge {
