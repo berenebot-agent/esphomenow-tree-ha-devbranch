@@ -185,7 +185,14 @@ def generate_scaffold(node: dict[str, Any]) -> tuple[str, bool]:
     if "variant" in board_info:
         lines.append(f"  variant: {board_info['variant']}")
 
-    if sdkconfig_options:
+    # ESPHome's `esp8266:` block accepts no `framework:` key at all — the framework
+    # type is implied (Arduino). Emitting one fails validation outright
+    # ("[type] is an invalid option for [framework]"), so every scaffolded ESP8266
+    # config was rejected before it reached the compiler. Only ESP32 takes a
+    # framework block, where a non-default type has to be stated explicitly.
+    if platform_key == "esp8266":
+        pass
+    elif sdkconfig_options:
         lines.append("  framework:")
         lines.append(f"    type: {board_info['framework']}")
         lines.append("    sdkconfig_options:")

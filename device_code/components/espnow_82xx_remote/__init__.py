@@ -19,7 +19,10 @@ from esphome.components import alarm_control_panel as alarm_control_panel_compon
 from esphome.components import switch as switch_component
 
 CODEOWNERS = ["@esphome"]
-AUTO_LOAD = ["esp_tree_common"]
+# Same reason as esp_tree_remote: remote_file_receiver.h includes md5.h, and only
+# loaded components are copied into the build tree. This component has no ota:/wifi:
+# to pull md5 in transitively, so it must declare it.
+AUTO_LOAD = ["esp_tree_common", "md5"]
 
 CONF_NETWORK_ID = "network_id"
 CONF_PSK = "psk"

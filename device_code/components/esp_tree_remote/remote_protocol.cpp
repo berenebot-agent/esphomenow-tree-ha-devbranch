@@ -4,7 +4,9 @@
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
+#endif
 #include "esphome/components/md5/md5.h"
 #include <esp_random.h>
 #include <esp_system.h>
@@ -2011,7 +2013,15 @@ void RemoteProtocol::flush_pending_discover_announce_() {
 }
 
 bool RemoteProtocol::wifi_connected_() const {
+  // A remote is ESP-NOW-only and normally has no `wifi:` block at all, so
+  // global_wifi_component does not exist there. Without this guard the compiler
+  // needs the wifi component header (absent) and the build fails during discovery,
+  // where WiFi is only consulted as an optional radio-channel hint.
+#ifdef USE_WIFI
   return wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected();
+#else
+  return false;
+#endif
 }
 
 uint8_t RemoteProtocol::current_wifi_channel_() const {
@@ -2415,7 +2425,15 @@ void RemoteProtocol::start_discovery_cycle_(bool wifi_wait_expired) {
   topology_refresh_due_ms_ = 0;
   fill_random_bytes(remote_nonce_.data(), remote_nonce_.size());
 
+  // A remote without `wifi:` has no usable WiFi channel to wait for, so this
+  // branch must not reference global_wifi_component: the symbol only exists when
+  // the wifi component is loaded (USE_WIFI). Otherwise a plain ESP-NOW remote
+  // never compiles.
+#ifdef USE_WIFI
   if (!wifi_wait_expired && wifi::global_wifi_component != nullptr && !wifi_connected_()) {
+#else
+  if (false) {
+#endif
     wifi_waiting_ = true;
     wifi_wait_deadline_ms_ = millis() + ESPNOW_WIFI_DISCOVER_WAIT_MS;
     state_name_ = "WAIT_WIFI";

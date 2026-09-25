@@ -209,7 +209,18 @@ export class EspRemoteWizard extends LitElement {
         espnow_mode: 'lr',
         ota_password: '',
         chip_name: this.chipName,
-        board_info: { platform: chip.platform, board: chip.board, framework: chip.framework },
+        // Carry `variant` through when the chip registry supplies it. Without it the
+        // generated YAML has no `variant:` line, so ESPHome cannot resolve the SoC's
+        // UART0 pins for anything that needs them (the serial scaffold) and a
+        // pinless `uart:` block reaches the compiler. The bridge wizard hardcoded
+        // its variants for this reason; a remote must not silently lose it just
+        // because the registry grew the field.
+        board_info: {
+          platform: chip.platform,
+          board: chip.board,
+          framework: chip.framework,
+          ...(chip.variant ? { variant: chip.variant } : {}),
+        },
         transport: 'espnow',
         kind: 'remote',
       });
@@ -513,6 +524,27 @@ export class EspRemoteWizard extends LitElement {
                   The button above writes the firmware from this computer. If your browser cannot,
                   use the compiled .bin with your own tool, then continue.
                 </p>
+                ${this.mac
+                  ? html`
+                      <div class="actions download-actions">
+                        <a class="btn" href=${api.downloadFactoryBinary(this.mac)} download>
+                          Download factory .bin
+                        </a>
+                        <a class="btn" href=${api.downloadCompileBinary(this.mac)} download>
+                          Download .ota.bin
+                        </a>
+                        <a class="btn" href=${'#/device/' + encodeURIComponent(this.mac) + '/config'}>
+                          Edit config / YAML
+                        </a>
+                      </div>
+                      <p class="hint">
+                        <strong>Download factory .bin</strong> writes the whole image at offset 0
+                        (bootloader + partitions + app) and is what a blank device needs — flash it
+                        with your own tool at 0x0. The .ota.bin is an update image and cannot be
+                        flashed to empty flash.
+                      </p>
+                    `
+                  : nothing}
               `
             : nothing}
 
@@ -708,8 +740,21 @@ export class EspRemoteWizard extends LitElement {
 
     .actions {
       display: flex;
-      gap: 8px;
       flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    /* Download / edit-config links sit under the flash action and must not be
+       mistaken for the primary flash path. */
+    .download-actions {
+      margin-top: 4px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .download-actions a {
+      text-decoration: none;
     }
 
     .status.ok strong {

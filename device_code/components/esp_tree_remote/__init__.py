@@ -19,7 +19,13 @@ from esphome.components import alarm_control_panel as alarm_control_panel_compon
 from esphome.components import switch as switch_component
 
 CODEOWNERS = ["@esphome"]
-AUTO_LOAD = ["esp_tree_common"]
+# `md5` must be declared here, not relied on transitively: remote_file_receiver.h
+# includes "esphome/components/md5/md5.h" unconditionally, and ESPHome only copies
+# LOADED components into the build tree. On a bridge, `ota:` happens to AUTO_LOAD
+# md5, which masked this. A remote deliberately has no ota:/wifi:, so without this
+# entry the compiler stops at "fatal error: md5.h: No such file or directory" and
+# the remote can never be built.
+AUTO_LOAD = ["esp_tree_common", "md5"]
 
 CONF_NETWORK_ID = "network_id"
 CONF_PSK = "psk"

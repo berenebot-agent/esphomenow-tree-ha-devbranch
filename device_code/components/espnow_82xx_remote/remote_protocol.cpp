@@ -3,7 +3,9 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
+#endif
 
 #if defined(ARDUINO_ARCH_ESP8266)
 // ESP8266 Arduino — most low-level wifi/esp IDf headers not available.
@@ -1958,7 +1960,12 @@ void RemoteProtocol::flush_pending_discover_announce_() {
 }
 
 bool RemoteProtocol::wifi_connected_() const {
+  // Only meaningful when the wifi component is loaded; see esp_tree_remote.
+#ifdef USE_WIFI
   return wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected();
+#else
+  return false;
+#endif
 }
 
 uint8_t RemoteProtocol::current_wifi_channel_() const {
@@ -2214,7 +2221,13 @@ void RemoteProtocol::start_discovery_cycle_(bool wifi_wait_expired) {
   topology_refresh_due_ms_ = 0;
   fill_random_bytes(remote_nonce_.data(), remote_nonce_.size());
 
+  // Guarded for the same reason as esp_tree_remote: global_wifi_component only
+  // exists when the wifi component is loaded (USE_WIFI).
+#ifdef USE_WIFI
   if (!wifi_wait_expired && wifi::global_wifi_component != nullptr && !wifi_connected_()) {
+#else
+  if (false) {
+#endif
     // If no STA is configured (AP-only), there's nothing to wait for — skip
     // the 15s wifi wait and start discovery immediately.
     if (wifi::global_wifi_component->has_sta()) {
