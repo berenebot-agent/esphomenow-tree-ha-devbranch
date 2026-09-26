@@ -276,10 +276,13 @@ void test_blast_then_increment_complete() {
 
   rig.send_blast_complete(0);
 
-  // A complete increment produces two all-clear GAPS ACKs: one before the flash write
-  // (line 258-262) and one after it (line 450-452, because this is the last increment).
-  expect(rig.acks.size() == 3, "two GAPS ACKs after BLAST_COMPLETE of a complete increment");
-  expect(rig.count_acks_with_result(ESPNOW_FILE_ACK_GAPS) == 2, "both post-blast ACKs are GAPS");
+  // A complete increment produces exactly ONE all-clear GAPS ACK, sent by
+  // write_increment_to_flash_() after the commit (remote_file_receiver.cpp:450-452).
+  // It must not be sent before the write: an empty-bitmap GAPS ACK means
+  // INCREMENT_COMPLETE, and the bridge advances on the first one, so an early ack
+  // makes it blast the next increment into a node that is still WRITING.
+  expect(rig.acks.size() == 2, "one GAPS ACK after BLAST_COMPLETE of a complete increment");
+  expect(rig.count_acks_with_result(ESPNOW_FILE_ACK_GAPS) == 1, "the single post-blast ACK is GAPS");
   AckRecord gaps_ack = rig.last_ack();
   expect(gaps_ack.header.result == ESPNOW_FILE_ACK_GAPS, "result is GAPS");
   expect(ack_bitmap_len(gaps_ack) == 0, "empty bitmap = increment complete");
@@ -290,11 +293,11 @@ void test_blast_then_increment_complete() {
   // The final increment leaves the receiver in WAITING_END (line 450-452), so a repeated
   // BLAST_COMPLETE is refused (line 237-241) and must not write the increment a second time.
   rig.send_blast_complete(0);
-  expect(rig.acks.size() == 3, "duplicate BLAST_COMPLETE in WAITING_END is ignored");
+  expect(rig.acks.size() == 2, "duplicate BLAST_COMPLETE in WAITING_END is ignored");
   expect(rig.handler.delivered_bytes.size() == 884, "no second flash write");
 
   rig.send_end();
-  expect(rig.acks.size() == 4, "COMPLETE ACK sent after END");
+  expect(rig.acks.size() == 3, "COMPLETE ACK sent after END");
   AckRecord complete_ack = rig.last_ack();
   expect(complete_ack.header.result == ESPNOW_FILE_ACK_COMPLETE, "result is COMPLETE");
   expect(complete_ack.trailing[0] == ESPNOW_FILE_ACTION_OTA_FLASH, "action echoed");
@@ -336,9 +339,9 @@ void test_gaps_retransmit_then_complete() {
 
   rig.send_blast_complete(0);
 
-  // Now complete: GAPS before the write (line 260) plus GAPS after it (line 455, since a second
-  // increment still exists).
-  expect(rig.acks.size() == 4, "two GAPS ACKs once the increment is complete");
+  // Now complete: exactly one GAPS ACK, sent after the write (line 455, since a second
+  // increment still exists). No ack precedes the write.
+  expect(rig.acks.size() == 3, "one GAPS ACK once the increment is complete");
   AckRecord gaps_ack2 = rig.last_ack();
   expect(gaps_ack2.header.result == ESPNOW_FILE_ACK_GAPS, "result is GAPS");
   expect(ack_bitmap_len(gaps_ack2) == 0, "empty bitmap after retransmit = all chunks received");
@@ -369,7 +372,7 @@ void test_blast_complete_future_increment_ignored() {
 
   // The real increment 0 then completes normally.
   rig.send_blast_complete(0);
-  expect(rig.acks.size() == 3, "increment 0 completes after the stray index");
+  expect(rig.acks.size() == 2, "increment 0 completes after the stray index");
   expect(ack_bitmap_len(rig.last_ack()) == 0, "increment 0 complete (empty bitmap)");
   expect(delivered_chunks_exact(rig.handler, 0, 4), "chunks written once after the stray index");
 }
@@ -385,12 +388,12 @@ void test_blast_complete_stale_increment_index_reacked() {
   }
 
   rig.send_blast_complete(0);
-  expect(rig.acks.size() == 3, "increment 0 complete, GAPS before and after the write");
+  expect(rig.acks.size() == 2, "increment 0 complete, one GAPS after the write");
 
   // current_increment_ is now 1, so a stale BLAST_COMPLETE for increment 0 is answered with an
   // all-clear GAPS ACK so the sender can move on (remote_file_receiver.cpp:249-250).
   rig.send_blast_complete(0);
-  expect(rig.acks.size() == 4, "stale increment index answered with a GAPS ACK");
+  expect(rig.acks.size() == 3, "stale increment index answered with a GAPS ACK");
   AckRecord stale_ack = rig.last_ack();
   expect(stale_ack.header.result == ESPNOW_FILE_ACK_GAPS, "result is GAPS");
   expect(ack_bitmap_len(stale_ack) == 0, "empty bitmap = current increment complete, re-sent all-clear");
@@ -412,7 +415,7 @@ void test_last_increment_end_flow() {
 
   rig.send_blast_complete(0);
 
-  expect(rig.acks.size() == 3, "GAPS ACK sent for increment 0 (before and after the write)");
+  expect(rig.acks.size() == 2, "GAPS ACK sent for increment 0 (after the write)");
   AckRecord gaps_ack0 = rig.last_ack();
   expect(gaps_ack0.header.result == ESPNOW_FILE_ACK_GAPS, "result is GAPS");
   expect(ack_bitmap_len(gaps_ack0) == 0, "increment 0 complete (empty bitmap)");
@@ -423,8 +426,8 @@ void test_last_increment_end_flow() {
   rig.send_blast_complete(1);
 
   // Last increment: the post-write all-clear GAPS ACK (line 450-452) moves the receiver to
-  // WAITING_END.
-  expect(rig.acks.size() == 5, "GAPS ACK sent for last increment (before and after the write)");
+  // WAITING_END. Still exactly one ack for this increment.
+  expect(rig.acks.size() == 3, "GAPS ACK sent for last increment (after the write)");
   AckRecord gaps_ack1 = rig.last_ack();
   expect(gaps_ack1.header.result == ESPNOW_FILE_ACK_GAPS, "result is GAPS");
   expect(ack_bitmap_len(gaps_ack1) == 0, "last increment complete (empty bitmap)");
@@ -437,7 +440,7 @@ void test_last_increment_end_flow() {
 
   rig.send_end();
 
-  expect(rig.acks.size() == 6, "COMPLETE ACK sent after END");
+  expect(rig.acks.size() == 4, "COMPLETE ACK sent after END");
   AckRecord complete_ack = rig.last_ack();
   expect(complete_ack.header.result == ESPNOW_FILE_ACK_COMPLETE, "result is COMPLETE");
   expect(complete_ack.trailing[0] == ESPNOW_FILE_ACTION_OTA_FLASH, "action echoed");
@@ -461,7 +464,7 @@ void test_flash_write_failure_retry_abort() {
 
   // All-clear GAPS ACK before the write (line 258-262), then the one-shot retry (line 417-443)
   // fails as well and FileReceiver aborts with FLASH_ERROR (line 435-439).
-  expect(rig.acks.size() == 3, "GAPS ACK then abort ACK after write failure + retry failure");
+  expect(rig.acks.size() == 2, "abort ACK after write failure + retry failure, no early GAPS");
   expect(rig.count_acks_with_result(ESPNOW_FILE_ACK_ABORT) == 1, "exactly one abort ACK");
   AckRecord abort_ack = rig.last_ack();
   expect(abort_ack.header.result == ESPNOW_FILE_ACK_ABORT, "result is ABORT");
@@ -488,7 +491,7 @@ void test_flash_write_retry_recovers() {
 
   // write_increment_to_flash_() retries the entire increment (line 417-443) and then continues;
   // the last increment finishes in WAITING_END with an all-clear GAPS ACK (line 450-452).
-  expect(rig.acks.size() == 3, "GAPS before the write, GAPS after the successful retry");
+  expect(rig.acks.size() == 2, "one GAPS ACK after the successful retry");
   expect(rig.count_acks_with_result(ESPNOW_FILE_ACK_ABORT) == 0, "no abort when the retry succeeds");
   expect(ack_bitmap_len(rig.last_ack()) == 0, "increment complete after retry");
   expect(rig.handler.call_count == 5, "1 failed attempt + 4 retried chunks");
@@ -542,7 +545,7 @@ void test_duplicate_chunk_ignored() {
 
   rig.send_blast_complete(0);
 
-  expect(rig.acks.size() == 3, "increment complete after deduplication");
+  expect(rig.acks.size() == 2, "increment complete after deduplication");
   AckRecord gaps_ack = rig.last_ack();
   expect(gaps_ack.header.result == ESPNOW_FILE_ACK_GAPS, "result is GAPS");
   expect(ack_bitmap_len(gaps_ack) == 0, "all chunks received (duplicates ignored)");

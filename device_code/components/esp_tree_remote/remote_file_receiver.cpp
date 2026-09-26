@@ -257,9 +257,16 @@ bool FileReceiver::handle_blast_complete_(const espnow_file_blast_complete_t &bc
 
   if (is_complete) {
     state_ = State::WRITING;
-    if (!this->send_gaps_ack_(nullptr, 0)) {
-      return false;
-    }
+    // Do NOT ack here. An empty-bitmap GAPS ack means INCREMENT_COMPLETE, and the
+    // bridge acts on the first one: it advances current_increment and clears
+    // blast_complete_tx_history, so its next blast is dropped by this node while
+    // state_ == WRITING (handle_file_data only accepts in State::RECEIVING), and
+    // our post-write ack is then rejected as stale. The ack belongs to the write
+    // that completes the transition: write_increment_to_flash_() sends it after
+    // the commit. Acks here were present since 152f88e.
+    // if (!this->send_gaps_ack_(nullptr, 0)) {
+    //   return false;
+    // }
     if (!write_increment_to_flash_()) {
       return false;
     }
