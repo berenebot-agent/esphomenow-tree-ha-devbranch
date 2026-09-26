@@ -703,7 +703,13 @@ def create_app() -> FastAPI:
     async def debug_config_entries():
         if not settings.supervisor_token:
             return {"error": "SUPERVISOR_TOKEN not available"}
-        entries = await ha_config_entries(timeout=5.0)
+        try:
+            entries = await ha_config_entries(timeout=5.0)
+        except Exception as exc:
+            # A bare 500 here hid the real cause while this path was broken
+            # (config_entries/list having been removed from HA). Report it.
+            logger.exception("debug-config-entries failed")
+            return {"error": f"{type(exc).__name__}: {exc}"}
         esp_entries = [e for e in entries if e.get("domain") == "esp_tree"]
         return {
             "all_entries_count": len(entries),
