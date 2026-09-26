@@ -32,12 +32,16 @@ stored, but at most one is active at a time.
 | `device_code/demos/` | Firmware configurations (bridge, remotes, serial-transport variant) |
 | `device_code/tests/` | C++ unit tests |
 | `test/` | Standalone add-on UI harness; Home Assistant-only setup and cleanup actions are unavailable |
-| `scripts/`, `device_code/scripts/` | Development, compile, flash and logging helpers |
-| `docs/` | Protocol, API, roadmap and workplan documents |
+| `device_code/scripts/` | Compile, flash and serial-log helpers used by `dev.sh` |
+| `docs/` | Live specifications and guides (protocol, API, USB logging, standalone) |
 | `rootfs/` | Container init: installs the integration into `/config`, announces discovery |
 
-See `CONTRIBUTING.md` for the per-domain entry points and
-`docs/ESP_ha-addon-plan.md` for the add-on design.
+> Historical plans, roadmaps, archives and mockups are intentionally **not** in
+> this repository. They live outside the git tree in the project's `docs/archive/`
+> directory, because they describe work that has shipped or been abandoned and
+> would otherwise be mistaken for current documentation.
+
+See `CONTRIBUTING.md` for the per-domain entry points.
 
 ## Requirements
 
@@ -237,26 +241,32 @@ a bridge build.
 
 ## Documentation
 
+Live documentation in this repository:
+
 - `docs/esptree_radio_v3_spec.md` — the ESP-NOW protocol, including LR and
   regular mode (authoritative).
 - `docs/esptree_api_protobuf_spec.md` — protobuf/WebSocket API contract.
 - `docs/ESP_guide_usblog.md` — direct USB serial logging.
 - `docs/ESP_standalone.md` — ESP-IDF (non-ESPHome) remote implementation.
-- `docs/HA_workplan_multi_bridge.md`, `docs/ESP_roadmap_*.md`,
-  `docs/workplan_*.md` — historical roadmaps and workplans. Check their status
-  against current code and dated manual-test checklists before relying on them.
-- `docs/roadmap_publish.md` — a historical OSS-readiness audit. Several entries
-  are now resolved, so verify each item against the current tree rather than
-  treating the whole file as an open-item list.
-- `DOCS.md` is **stale**: it documents the removed V1 HTTP API. Trust the
-  specifications, executable configuration and code instead.
+- `docs/internal/serial_bridge_manual_test_checklist.md` — QA checklist for the
+  serial transport.
+
+Historical plans, roadmaps, archives and UI mockups have been moved out of the
+repository to the project's `docs/archive/` (sibling of this checkout). They are
+not current documentation — treat them as background only, and verify anything
+you take from them against the code.
+
+The legacy `DOCS.md` (which described the removed V1 HTTP API) was among them;
+trust the specifications above and the executable code instead.
 
 ## Status
 
 Core add-on, integration, WiFi-bridge and serial-bridge paths are implemented,
 but this is not yet a polished OSS release. The serial implementation still has
-a manual hardware-test matrix in `docs/ESP_roadmap_workplan_serial_bridge.md`;
-use the current manual checklist before claiming a tested transport matrix.
+a manual hardware-test matrix in the archived
+`ESP_roadmap_workplan_serial_bridge.md`; use the current checklist at
+`docs/internal/serial_bridge_manual_test_checklist.md` before claiming a tested
+transport matrix.
 
 Licensed **AGPL-3.0-only** (see `LICENSE`).
 
@@ -267,10 +277,4 @@ Known release-readiness gaps:
 - Incomplete YAML configuration reference for `esp_tree_bridge:` / `esp_tree_remote:`.
 - No documented walkthrough for a first real sensor.
 - `CHANGELOG.md` last has a released entry for 0.1.38; later releases are not
-  itemised there.
-- `DOCS.md` is stale (see above) and is slated for removal.
-- `scripts/log_listener.py` and `scripts/esplog-master.py` are development
-  helpers that bind an unauthenticated HTTP port and are not intended for
-  production use; they need either hardening or removal before release.
-- `docs/roadmap_publish.md` contains useful background but is not a current
-  open-items list — verify each item against the tree.
+  itemised there — `git log` is authoritative for the versions since.

@@ -13,15 +13,18 @@ Most changes belong to one domain:
 - `device_code/components/` contains the ESPHome bridge, remote, legacy ESP8266, and shared components.
 - `device_code/demos/` contains firmware configurations.
 - `device_code/tests/` contains the C++ unit tests.
-- `scripts/` and `device_code/scripts/` contain development, logging, compile, and flash helpers.
+- `device_code/scripts/` contains compile, flash and serial-log helpers used by `dev.sh`.
 
 Read the current code and executable configuration before relying on prose. The technical references are:
 
 - `docs/esptree_radio_v3_spec.md` for the ESP-NOW LR protocol.
 - `docs/esptree_api_protobuf_spec.md` for the protobuf/WebSocket API.
 - `docs/ESP_guide_usblog.md` for direct USB serial logging.
+- `docs/internal/serial_bridge_manual_test_checklist.md` for serial QA.
 
-`DOCS.md` contains older product notes and legacy HTTP-flow details. Use the current code and specifications above when they disagree.
+Historical plans, roadmaps and archives are **not** in this repository — they
+live outside the git tree in the project's `docs/archive/`. Do not treat them as
+current documentation.
 
 ## Scope and safety
 
