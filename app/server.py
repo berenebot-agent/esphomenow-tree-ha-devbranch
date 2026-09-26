@@ -680,10 +680,15 @@ def create_app() -> FastAPI:
         }
 
     async def ha_config_entries(timeout: float = 5.0) -> list[dict[str, Any]]:
-        msg = await ha_ws_call({"type": "config_entries/list"}, timeout=timeout)
+        # The command is `config_entries/get`. `config_entries/list` was removed from
+        # Home Assistant -- calling it raises "Unknown command", which surfaced as a
+        # bare 500 from /api/debug-config-entries and silently broke every caller
+        # that enumerates entries (the setup-status loaded/entry_loaded probe, the
+        # legacy /share cleanup, and both cleanup fallbacks).
+        msg = await ha_ws_call({"type": "config_entries/get"}, timeout=timeout)
         result = msg.get("result", [])
         entries = result.get("entries", []) if isinstance(result, dict) else result
-        logger.debug(f"config_entries/list raw response: {entries}")
+        logger.debug(f"config_entries/get raw response: {entries}")
         return entries if isinstance(entries, list) else []
 
     def integration_runtime_status() -> dict[str, Any]:
