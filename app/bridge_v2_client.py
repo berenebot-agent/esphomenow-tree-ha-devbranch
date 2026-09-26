@@ -847,15 +847,22 @@ class BridgeV2Manager:
                     client.bridge_uuid,
                     network_id=snapshot.bridge.network_id,
                     last_connected_at=now_ts(),
+                    # Replaces the wizard's synthetic PLACEHOLDER_MAC on the bridges
+                    # row too. remove_remote() protects bridge MACs by reading
+                    # bridges.mac, so leaving the placeholder there meant the real
+                    # bridge address was not protected from removal as a "remote".
+                    mac=bridge_mac,
                 )
             )
-            # The flash wizard creates the bridge with the synthetic PLACEHOLDER_MAC
-            # because the real MAC is unknown at that point. The WiFi path migrates
-            # it in _try_auto_activate_provisioned_bridge(), but the serial path
-            # activates without ever learning a MAC there, so the placeholder device
-            # row survived and the topology showed two rows named after the bridge:
-            # one at the placeholder and one at the real address. This is the moment
-            # the real MAC first becomes known on either transport, so migrate here.
+            # The flash wizard creates the bridge's device row with the same
+            # synthetic PLACEHOLDER_MAC because the real MAC is unknown at submit
+            # time. The WiFi path migrates it in
+            # _try_auto_activate_provisioned_bridge(), but the serial branch activates
+            # the bridge and returns before reaching that code, and the serial client
+            # is pure transport with no DB handle -- so the placeholder device row
+            # survived and the topology showed two rows named after the same bridge.
+            # This is the only point both transports converge on and the first moment
+            # the real MAC is known, so migrate here.
             asyncio.ensure_future(
                 asyncio.to_thread(
                     self._db.rename_device_mac,

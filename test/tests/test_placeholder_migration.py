@@ -54,6 +54,20 @@ def test_placeholder_mac_is_shared_not_redefined() -> None:
     assert "PLACEHOLDER_MAC" in server and "REMOTE_PLACEHOLDER_MAC" in server
 
 
+def test_snapshot_persists_the_real_bridge_mac() -> None:
+    """The bridges row must stop carrying the placeholder MAC.
+
+    remove_remote() protects bridge MACs by reading bridges.mac, so a bridge row
+    left at FF:FF:FF:FF:FF:FF leaves the real bridge address unprotected: removing
+    it as though it were a remote would be permitted.
+    """
+    body = _snapshot_body()
+    assert "mac=bridge_mac" in body, (
+        "_handle_snapshot does not persist the real bridge MAC onto the bridges row"
+    )
+    assert "update_bridge" in body
+
+
 def test_both_placeholder_macs_stay_distinct() -> None:
     """Sharing one value would let a remote overwrite the bridge's device row."""
     consts = (APP / "bridge_constants.py").read_text()
