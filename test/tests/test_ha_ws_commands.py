@@ -85,3 +85,22 @@ def test_debug_config_entries_route_still_exists() -> None:
     """The route that surfaced the 500 should not simply be deleted to hide it."""
     src = (APP / "server.py").read_text()
     assert "/api/debug-config-entries" in src
+
+
+def test_setup_status_gives_the_entries_probe_enough_time() -> None:
+    """The entries listing needs a longer timeout than the live-socket status call.
+
+    ha_ws_call opens a fresh websocket per call (connect + auth + request). When the
+    entries probe was allowed 1.5s it lost the race, `entries` stayed empty, and
+    setup-status reported entry_count 0 / entry_states [] -- which reads as "no
+    integration installed" -- while `loaded` still said True from the live socket.
+    """
+    code = "\n".join(
+        c for _, c in _code_lines(APP / "server.py")
+    )
+    assert 'ha_config_entries(timeout=5.0)' in code, (
+        "the setup-status entries probe needs a realistic timeout"
+    )
+    assert 'ha_config_entries(timeout=1.5)' not in code, (
+        "1.5s is too short for the config-entries listing"
+    )

@@ -727,7 +727,14 @@ def create_app() -> FastAPI:
         connected = False
         ws_client_connected = live_connected
         if settings.supervisor_token:
-            entries_task = asyncio.create_task(ha_config_entries(timeout=1.5))
+            # 1.5s is too tight for this probe: ha_ws_call opens a fresh websocket
+            # to the supervisor on every call (connect + auth + request), and the
+            # config-entries listing is the slowest of the two. When it lost the
+            # race, `entries` stayed empty and the response reported entry_count 0
+            # with entry_states [] -- indistinguishable from "no integration
+            # installed", while `loaded` still read True from the live socket. The
+            # same listing completes comfortably at 5s on /api/debug-config-entries.
+            entries_task = asyncio.create_task(ha_config_entries(timeout=5.0))
             status_task = asyncio.create_task(ha_ws_call({"type": "esp_tree/status"}, timeout=1.5))
             try:
                 entry_results, status_msg = await asyncio.gather(
