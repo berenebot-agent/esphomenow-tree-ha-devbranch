@@ -473,6 +473,23 @@ class SerialBridgeClient:
     async def _send_async(self, envelope: pb.Envelope) -> None:
         await asyncio.get_running_loop().run_in_executor(None, self._send_envelope_sync, envelope)
 
+    async def refresh_snapshot(self) -> None:
+        """Ask the bridge for a full snapshot.
+
+        Public counterpart to BridgeV2Client._send for this call site: the manager
+        used to reach into `client._send(...)`, which only the WebSocket client has,
+        so the refresh raised AttributeError on a serial bridge. That path is only
+        taken when the topology list is empty, which is why it stayed hidden until a
+        remote entry needed rediscovering.
+        """
+        await self._send_async(
+            pb.Envelope(
+                request_id=uuid.uuid4().hex,
+                api_version=API_VERSION,
+                client_hello=pb.ClientHello(request_full_snapshot=True, integration_version="addon"),
+            )
+        )
+
     async def request(self, envelope: pb.Envelope, timeout: float = 10.0) -> pb.Envelope:
         if not envelope.request_id:
             envelope.request_id = uuid.uuid4().hex

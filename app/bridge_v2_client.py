@@ -283,6 +283,16 @@ class BridgeV2Client:
         async with self._send_lock:
             await self._ws.send(envelope.SerializeToString())
 
+    async def refresh_snapshot(self) -> None:
+        """Ask the bridge for a full snapshot. Shared with the serial transport."""
+        await self._send(
+            pb.Envelope(
+                request_id=uuid.uuid4().hex,
+                api_version=API_VERSION,
+                client_hello=pb.ClientHello(request_full_snapshot=True, integration_version="addon"),
+            )
+        )
+
     async def request(self, envelope: pb.Envelope, timeout: float = 10.0) -> pb.Envelope:
         if not envelope.request_id:
             envelope.request_id = uuid.uuid4().hex
@@ -695,13 +705,12 @@ class BridgeV2Manager:
     async def refresh_once(self) -> None:
         for client in self._clients.values():
             if client.connected:
-                await client._send(
-                    pb.Envelope(
-                        request_id=uuid.uuid4().hex,
-                        api_version=API_VERSION,
-                        client_hello=pb.ClientHello(request_full_snapshot=True, integration_version="addon"),
-                    )
-                )
+                # Use the public per-transport method: not every client exposes the
+                # WebSocket client's private `_send`, so calling that raised
+                # AttributeError on a serial bridge.
+                refresh = getattr(client, "refresh_snapshot", None)
+                if callable(refresh):
+                    await refresh()
 
     async def _async_refresh_once(self) -> None:
         await self.refresh_once()
