@@ -45,6 +45,40 @@ static constexpr const char *CLIENT_ALREADY_CONNECTED = "client_already_connecte
 static constexpr const char *INTERNAL_ERROR = "internal_error";
 }  // namespace error
 
+// Maps a free-text OTA start failure to the wire error code the add-on switches on.
+// Shared by every transport: it started as a file-static in the WebSocket transport,
+// which meant the serial transport could not reuse it. Uses plain C string search
+// rather than <algorithm>/<cctype> so the header stays dependency-light.
+inline const char *ota_start_error_code(const char *message) {
+  if (message == nullptr) return error::INTERNAL_ERROR;
+  std::string text(message);
+  for (char &c : text) {
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  }
+  if (text.find("not found") != std::string::npos || text.find("offline") != std::string::npos)
+    return error::REMOTE_NOT_FOUND;
+  if (text.find("busy") != std::string::npos) return error::OTA_BUSY;
+  if (text.find("md5") != std::string::npos) return error::OTA_INVALID_MD5;
+  if (text.find("size") != std::string::npos) return error::OTA_INVALID_SIZE;
+  if (text.find("reject") != std::string::npos) return error::OTA_REJECTED;
+  return error::INTERNAL_ERROR;
+}
+
+// CRC32 (IEEE 802.3, reflected) used to validate OTA chunk payloads. Shared so every
+// transport validates chunks identically - a transport that skipped this check would
+// happily inject corrupt firmware.
+inline uint32_t crc32_bytes(const uint8_t *data, size_t len) {
+  if (data == nullptr) return 0xFFFFFFFFu ^ 0xFFFFFFFFu;
+  uint32_t crc = 0xFFFFFFFFu;
+  for (size_t i = 0; i < len; ++i) {
+    crc ^= data[i];
+    for (int bit = 0; bit < 8; ++bit) {
+      crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+    }
+  }
+  return crc ^ 0xFFFFFFFFu;
+}
+
 namespace config_result {
 static constexpr const char *OK = "ok";
 static constexpr const char *BUSY = "busy";

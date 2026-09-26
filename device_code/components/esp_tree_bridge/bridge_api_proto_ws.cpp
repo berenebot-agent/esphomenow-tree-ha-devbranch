@@ -86,28 +86,11 @@ static std::string websocket_accept_key(const std::string &client_key) {
 }
 #endif
 
-static uint32_t crc32_bytes(const uint8_t *data, size_t len) {
-  uint32_t crc = 0xFFFFFFFFu;
-  for (size_t i = 0; i < len; ++i) {
-    crc ^= data[i];
-    for (int bit = 0; bit < 8; ++bit) {
-      crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
-    }
-  }
-  return crc ^ 0xFFFFFFFFu;
-}
+// crc32_bytes() and ota_start_error_code() now live in bridge_api_types.h so every
+// transport shares one implementation.
 
-static const char *ota_start_error_code(const char *message) {
-  if (message == nullptr) return error::INTERNAL_ERROR;
-  std::string text(message);
-  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (text.find("not found") != std::string::npos || text.find("offline") != std::string::npos) return error::REMOTE_NOT_FOUND;
-  if (text.find("busy") != std::string::npos) return error::OTA_BUSY;
-  if (text.find("md5") != std::string::npos) return error::OTA_INVALID_MD5;
-  if (text.find("size") != std::string::npos) return error::OTA_INVALID_SIZE;
-  if (text.find("reject") != std::string::npos) return error::OTA_REJECTED;
-  return error::INTERNAL_ERROR;
-}
+// ota_start_error_code() now lives in bridge_api_types.h as
+// bridge_api::ota_start_error_code(), shared with the serial transport.
 
 }  // namespace
 

@@ -52,6 +52,15 @@ struct BridgeApiSerialTransport::Impl {
   uint32_t last_heartbeat_ms{0};
   uint32_t rx_dropped_{0};
 
+  // OTA job bookkeeping, mirroring the WebSocket transport. The OTA machinery
+  // itself (bridge_ota_manager) is transport-agnostic; these fields only carry the
+  // per-transport job identity and the chunks this transport expects back.
+  std::string ota_chunk_request_id;
+  std::string ota_job_id;
+  std::set<uint32_t> ota_pending_sequences;
+  uint32_t ota_max_chunk_size{kMaxChunkSize};
+  uint32_t ota_max_chunks_per_batch{6};
+
   static constexpr uint32_t CONNECTION_TIMEOUT_MS = 60000;
   static constexpr size_t MAX_RX_BUFFER = runtime_pb::kRuntimeMaxFrameBytes * 2;
 
@@ -114,6 +123,114 @@ struct BridgeApiSerialTransport::Impl {
   void send_auth_failed(const std::string &request_id, const std::string &code, const std::string &message) {
     std::vector<uint8_t> frame;
     runtime_pb::auth_failed_envelope(frame, request_id, code, message);
+    send_cobs_frame(frame);
+  }
+
+  // --- OTA over serial ---------------------------------------------------
+  //
+  // These mirror the WebSocket transport's handlers. The bridge's OTA machinery
+  // (bridge_ota_manager / api_ota_*) is transport-agnostic and already reaches the
+  // remote over ESP-NOW, which is what `ota_over_espnow` means. The serial transport
+  // previously refused OTA_ENVELOPE messages outright, so a remote on a serial
+  // bridge could not be flashed even though the roadmap says remote ESP-NOW OTA is
+  // "unchanged and fully supported in serial mode".
+  //
+  // What is NOT supported over serial (and stays unsupported) is OTA *of the bridge
+  // itself* over the same cable - that needs esptool on a USB connection.
+  void handle_ota_start(const runtime_pb::ParsedEnvelope &env) {
+    runtime_pb::ParsedOtaStartRequest request;
+    std::vector<uint8_t> frame;
+    if (!runtime_pb::parse_ota_start_request(env.msg_data, env.msg_len, request)) {
+      runtime_pb::error_envelope(frame, env.request_id, "invalid_ota_start", "Invalid OTA start request");
+      send_cobs_frame(frame);
+      return;
+    }
+    std::string job_id;
+    uint16_t max_chunk_size = 0;
+    std::string error_msg;
+    if (!bridge->api_ota_start(request.target_mac, request.file_size, request.md5, request.sha256,
+                               request.filename, request.preferred_chunk_size, job_id, max_chunk_size,
+                               env.request_id, error_msg)) {
+      runtime_pb::error_envelope(frame, env.request_id, ota_start_error_code(error_msg.c_str()),
+                                 error_msg.empty() ? "OTA start failed" : error_msg);
+      send_cobs_frame(frame);
+      return;
+    }
+    runtime_pb::encode_ota_status(frame, "", job_id, runtime_pb::OTA_STATE_ANNOUNCING,
+                                  0, 0, request.file_size, "");
+    send_cobs_frame(frame);
+  }
+
+  void handle_ota_chunk_batch(const runtime_pb::ParsedEnvelope &env) {
+    runtime_pb::ParsedOtaChunkBatch batch;
+    std::vector<uint8_t> frame;
+    if (!runtime_pb::parse_ota_chunk_batch(env.msg_data, env.msg_len, batch)) {
+      runtime_pb::error_envelope(frame, env.request_id, error::OTA_INVALID_CHUNK, "Invalid OTA chunk batch");
+      send_cobs_frame(frame);
+      return;
+    }
+    if (!bridge->api_ota_has_active_job() || batch.job_id != bridge->api_ota_active_job_id()) {
+      runtime_pb::error_envelope(frame, env.request_id, error::OTA_NOT_ACTIVE, "No active OTA job for batch");
+      send_cobs_frame(frame);
+      return;
+    }
+    bool stale_request = false;
+    bool batch_too_large = false;
+    {
+      if (batch.response_request_id != ota_chunk_request_id) {
+        ESP_LOGW(TAG, "Serial stale OTA batch request_id=%s expected=%s", batch.response_request_id.c_str(),
+                 ota_chunk_request_id.c_str());
+        stale_request = true;
+      } else if (batch.chunks.size() > ota_max_chunks_per_batch) {
+        batch_too_large = true;
+      }
+    }
+    if (stale_request) {
+      bridge->api_ota_resend_chunk_request();
+      return;
+    }
+    if (batch_too_large) {
+      runtime_pb::error_envelope(frame, env.request_id, error::OTA_INVALID_CHUNK, "OTA chunk batch too large");
+      send_cobs_frame(frame);
+      bridge->api_ota_abort(batch.job_id, "invalid_chunk_batch");
+      return;
+    }
+
+    for (const auto &chunk : batch.chunks) {
+      bool pending = false;
+      uint32_t max_chunk_size = 0;
+      {
+        pending = ota_pending_sequences.find(chunk.sequence) != ota_pending_sequences.end();
+        max_chunk_size = ota_max_chunk_size;
+      }
+      const uint64_t expected_offset = static_cast<uint64_t>(chunk.sequence) * max_chunk_size;
+      const bool invalid = !pending || chunk.payload == nullptr || chunk.payload_len == 0 ||
+                           chunk.payload_len > max_chunk_size || chunk.offset != expected_offset ||
+                           (chunk.flags & ~0x0001u) != 0 ||
+                           crc32_bytes(chunk.payload, chunk.payload_len) != chunk.crc32;
+      if (invalid || !bridge->api_ota_inject_chunk(chunk.sequence, chunk.payload, chunk.payload_len)) {
+        runtime_pb::error_envelope(frame, env.request_id, error::OTA_INVALID_CHUNK, "OTA chunk rejected");
+        send_cobs_frame(frame);
+        bridge->api_ota_abort(batch.job_id, "invalid_chunk");
+        return;
+      }
+      {
+        ota_pending_sequences.erase(chunk.sequence);
+        if (ota_pending_sequences.empty()) ota_chunk_request_id.clear();
+      }
+    }
+  }
+
+  void handle_ota_abort(const runtime_pb::ParsedEnvelope &env) {
+    runtime_pb::ParsedOtaAbortRequest request;
+    std::vector<uint8_t> frame;
+    if (!runtime_pb::parse_ota_abort_request(env.msg_data, env.msg_len, request)) {
+      runtime_pb::error_envelope(frame, env.request_id, error::OTA_NOT_ACTIVE, "Invalid OTA abort request");
+      send_cobs_frame(frame);
+      return;
+    }
+    bridge->api_ota_abort(request.job_id, request.reason);
+    runtime_pb::encode_ota_aborted(frame, env.request_id, request.job_id, request.reason);
     send_cobs_frame(frame);
   }
 
@@ -205,13 +322,15 @@ struct BridgeApiSerialTransport::Impl {
         bridge->api_runtime_handle_state_receipt(receipt.remote_mac, receipt.session_id,
                                                  receipt.state_tx_counter, receipt.entity_index);
       }
-    } else if (env.msg_field == runtime_pb::OTA_START_REQUEST ||
-               env.msg_field == runtime_pb::OTA_CHUNK_BATCH ||
-               env.msg_field == runtime_pb::OTA_ABORT_REQUEST) {
-      std::vector<uint8_t> err;
-      runtime_pb::error_envelope(err, env.request_id, "unsupported_message",
-                                  "OTA is not supported over serial transport");
-      send_cobs_frame(err);
+    } else if (env.msg_field == runtime_pb::OTA_START_REQUEST) {
+      if (bridge == nullptr) return;
+      handle_ota_start(env);
+    } else if (env.msg_field == runtime_pb::OTA_CHUNK_BATCH) {
+      if (bridge == nullptr) return;
+      handle_ota_chunk_batch(env);
+    } else if (env.msg_field == runtime_pb::OTA_ABORT_REQUEST) {
+      if (bridge == nullptr) return;
+      handle_ota_abort(env);
     } else {
       std::vector<uint8_t> err;
       runtime_pb::error_envelope(err, env.request_id, "unsupported_message", "Unsupported runtime request");
@@ -358,7 +477,16 @@ void BridgeApiSerialTransport::emit_remote_schema_changed(const uint8_t *mac, co
 void BridgeApiSerialTransport::on_ota_accepted(const std::string &request_id, const std::string &job_id,
                                                 const std::string &target_mac, uint16_t max_chunk_size,
                                                 uint32_t total_chunks, uint16_t max_chunks_per_batch) {
-  // OTA not supported over serial
+  if (!impl_->has_authenticated_client()) return;
+  {
+    impl_->ota_job_id = job_id;
+    impl_->ota_max_chunk_size = max_chunk_size;
+    impl_->ota_max_chunks_per_batch = max_chunks_per_batch;
+  }
+  std::vector<uint8_t> frame;
+  runtime_pb::encode_ota_accepted(frame, request_id, job_id, target_mac, max_chunk_size,
+                                  total_chunks, max_chunks_per_batch);
+  impl_->send_cobs_frame(frame);
 }
 
 void BridgeApiSerialTransport::on_ota_chunk_request(const std::string &job_id, const std::string &chunk_request_id,
@@ -367,18 +495,40 @@ void BridgeApiSerialTransport::on_ota_chunk_request(const std::string &job_id, c
                                                      uint32_t current_increment, uint32_t total_increments,
                                                      uint32_t retransmit_round, uint32_t buffer_size_kb,
                                                      uint32_t percent) {
-  // OTA not supported over serial
+  if (!impl_->has_authenticated_client()) return;
+  {
+    impl_->ota_job_id = job_id;
+    impl_->ota_chunk_request_id = chunk_request_id;
+    impl_->ota_pending_sequences.clear();
+    for (uint32_t seq : sequences) impl_->ota_pending_sequences.insert(seq);
+  }
+  std::vector<uint8_t> frame;
+  runtime_pb::encode_ota_chunk_request(frame, "", job_id, chunk_request_id, sequences,
+                                       chunks_sent, chunks_confirmed, current_increment,
+                                       total_increments, retransmit_round, buffer_size_kb, percent);
+  impl_->send_cobs_frame(frame);
 }
 
 void BridgeApiSerialTransport::on_ota_status(const std::string &job_id, runtime_pb::OtaState state,
                                               uint32_t percent, uint32_t bytes_received,
                                               uint32_t file_size, const std::string &error_detail) {
-  // OTA not supported over serial
+  if (!impl_->has_authenticated_client()) return;
+  std::vector<uint8_t> frame;
+  runtime_pb::encode_ota_status(frame, "", job_id, state, percent, bytes_received, file_size, error_detail);
+  impl_->send_cobs_frame(frame);
 }
 
 void BridgeApiSerialTransport::on_ota_aborted(const std::string &request_id, const std::string &job_id,
                                                const std::string &reason) {
-  // OTA not supported over serial
+  if (!impl_->has_authenticated_client()) return;
+  {
+    impl_->ota_chunk_request_id.clear();
+    impl_->ota_job_id.clear();
+    impl_->ota_pending_sequences.clear();
+  }
+  std::vector<uint8_t> frame;
+  runtime_pb::encode_ota_aborted(frame, request_id, job_id, reason);
+  impl_->send_cobs_frame(frame);
 }
 
 }  // namespace bridge_api

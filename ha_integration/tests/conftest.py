@@ -41,9 +41,41 @@ def _setup_mocks():
     ha.core.callback = lambda f: f
     ha.config_entries = types.ModuleType("homeassistant.config_entries")
     ha.config_entries.ConfigEntry = type("ConfigEntry", (), {})
+    # config_flow.py declares `class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)`,
+    # so the mock base must accept keyword arguments at class creation.
+    class _MockConfigFlow:
+        def __init_subclass__(cls, **kwargs):
+            super().__init_subclass__()
+
+        def __init__(self, *args, **kwargs):
+            self.hass = kwargs.get("hass")
+            self.context: dict = {}
+
+        async def async_set_unique_id(self, unique_id, *, raise_on_progress=True):
+            self.unique_id = unique_id
+            return {"type": "abort", "reason": "already_configured"}
+
+        def _abort_if_unique_id_configured(self, updates=None):
+            return None
+
+        def async_show_form(self, **kwargs):
+            return {"type": "form", **kwargs}
+
+        def async_create_entry(self, *, title, data):
+            return {"type": "create_entry", "title": title, "data": data}
+
+        def async_abort(self, *, reason):
+            return {"type": "abort", "reason": reason}
+
+    ha.config_entries.ConfigFlow = _MockConfigFlow
+    ha.config_entries.OptionsFlow = _MockConfigFlow
+    # Result alias used as a return annotation throughout config_flow.py.
+    ha.config_entries.ConfigFlowResult = dict
     ha.config_entries.SOURCE_IMPORT = "import"
     ha.config_entries.SOURCE_INTEGRATION_DISCOVERY = "integration_discovery"
     ha.helpers = types.ModuleType("homeassistant.helpers")
+    ha.helpers.selector = types.ModuleType("homeassistant.helpers.selector")
+    ha.helpers.selector.AreaSelector = lambda *a, **k: None
     ha.helpers.entity = types.ModuleType("homeassistant.helpers.entity")
     ha.helpers.entity.Entity = type("Entity", (), {"async_write_ha_state": lambda self: None})
     ha.helpers.device_registry = types.ModuleType("homeassistant.helpers.device_registry")
@@ -77,6 +109,7 @@ def _setup_mocks():
     sys.modules["homeassistant.core"] = ha.core
     sys.modules["homeassistant.config_entries"] = ha.config_entries
     sys.modules["homeassistant.helpers"] = ha.helpers
+    sys.modules["homeassistant.helpers.selector"] = ha.helpers.selector
     sys.modules["homeassistant.helpers.entity"] = ha.helpers.entity
     sys.modules["homeassistant.helpers.device_registry"] = ha.helpers.device_registry
     sys.modules["homeassistant.helpers.entity_registry"] = ha.helpers.entity_registry

@@ -1,6 +1,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { ChipInfo, api } from '../api/client';
+import { ChipInfo, api, normalizeMac } from '../api/client';
 import '../components/compile-log-viewer';
 
 /**
@@ -49,6 +49,30 @@ export class EspRemoteWizard extends LitElement {
   @state() private preparingManifest = false;
   @state() private usbSupported = true;
 
+  /**
+   * Post-flash Home Assistant integration status.
+   *
+   * Appearing in the topology is NOT the same as appearing in Home Assistant. The
+   * remote only becomes usable HA entities once the ESP Tree integration has a config
+   * entry for it, and that happens through the integration's own discovery flow. Until
+   * then the device-detail hero link reads "Entities: Not Yet Added" and points at
+   * /config/integrations/dashboard/add?domain=esp_tree -- which, when the hub
+   * integration is already installed, starts a user flow that immediately aborts
+   * `already_configured`. A dead end that looks like it should have worked.
+   *
+   * `undefined` = still checking, so we do not flash a misleading prompt.
+   */
+  @state() private haStatus: 'checking' | 'waiting-for-join' | 'managed' | 'unmanaged' = 'checking';
+  @state() private haDeviceId = '';
+  @state() private haBusy = false;
+  @state() private haNotice = '';
+
+  private haPollTimer: ReturnType<typeof setInterval> | null = null;
+  private haPollAttempts = 0;
+  private static readonly HA_POLL_INTERVAL_MS = 5000;
+  /** The remote has to boot, join the mesh and be seen by the bridge first. */
+  private static readonly HA_POLL_MAX_ATTEMPTS = 12;
+
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   connectedCallback(): void {
@@ -60,6 +84,7 @@ export class EspRemoteWizard extends LitElement {
 
   disconnectedCallback(): void {
     this.clearPoll();
+    this.clearHaPoll();
     this.clearManifestUrls();
     super.disconnectedCallback();
   }
@@ -340,20 +365,179 @@ export class EspRemoteWizard extends LitElement {
     }
     this.clearManifestUrls();
     this.stage = 'done';
+    this.watchForHaIntegration();
+  }
+
+  // --- post-flash Home Assistant integration ----------------------------
+
+  /**
+   * Poll until the remote shows up in the topology, then report whether Home
+   * Assistant actually manages it.
+   *
+   * Two genuinely different states, which the old single "Not Yet Added" link
+   * conflated into one useless link:
+   *  - the integration has no entry for this remote yet -> it still needs adding;
+   *  - the integration has an entry -> show the way to the HA device page.
+   */
+  private watchForHaIntegration(): void {
+    this.clearHaPoll();
+    this.haStatus = 'checking';
+    this.haDeviceId = '';
+    this.haPollAttempts = 0;
+    void this.checkHaIntegration();
+    this.haPollTimer = setInterval(
+      () => void this.checkHaIntegration(),
+      EspRemoteWizard.HA_POLL_INTERVAL_MS,
+    );
+  }
+
+  private clearHaPoll(): void {
+    if (this.haPollTimer) {
+      clearInterval(this.haPollTimer);
+      this.haPollTimer = null;
+    }
+  }
+
+  private async checkHaIntegration(): Promise<void> {
+    if (!this.mac) return;
+    this.haPollAttempts += 1;
+    try {
+      const nodes = await api.topology(true);
+      const mine = nodes.find(
+        (n) => normalizeMac(n.mac) === normalizeMac(this.mac),
+      );
+      if (!mine) {
+        // Not seen by the bridge yet -- normal for the first few seconds after a
+        // flash, since the remote has to boot and join.
+        this.haStatus = 'waiting-for-join';
+      } else if (mine.ha_device_id) {
+        this.haStatus = 'managed';
+        this.haDeviceId = mine.ha_device_id;
+        this.clearHaPoll();
+        return;
+      } else {
+        this.haStatus = 'unmanaged';
+      }
+    } catch {
+      this.haStatus = 'waiting-for-join';
+    }
+    if (this.haPollAttempts >= EspRemoteWizard.HA_POLL_MAX_ATTEMPTS) {
+      this.clearHaPoll();
+    }
+  }
+
+  /**
+   * Ask the integration to add any remote it has discovered but not yet added.
+   *
+   * This is the fix for the /config/integrations/dashboard/add?domain=esp_tree dead
+   * end: that URL starts a `user` flow, which aborts `already_configured` when the
+   * hub is installed, so it can never add a *remote*. The add-on's
+   * /api/integration/setup runs the discovery path instead.
+   */
+  private async addToHomeAssistant(): Promise<void> {
+    if (this.haBusy) return;
+    this.haBusy = true;
+    this.haNotice = '';
+    try {
+      const result = await api.integrationSetup();
+      if (!result.success && result.error) {
+        this.haNotice = result.error;
+      }
+      await this.checkHaIntegration();
+      if (this.haStatus !== 'managed') {
+        // The integration creates entries asynchronously, so give the next poll a
+        // chance before telling the user anything discouraging.
+        this.haPollAttempts = 0;
+        this.clearHaPoll();
+        this.haPollTimer = setInterval(
+          () => void this.checkHaIntegration(),
+          EspRemoteWizard.HA_POLL_INTERVAL_MS,
+        );
+      }
+    } catch (err) {
+      this.haNotice = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.haBusy = false;
+    }
   }
 
   private startOver(): void {
     this.clearPoll();
+    this.clearHaPoll();
     this.stage = 'config';
     this.error = '';
     this.compileStatus = '';
     this.compilePercent = 0;
     this.mac = '';
     this.esphomeName = '';
+    this.haStatus = 'checking';
+    this.haDeviceId = '';
+    this.haNotice = '';
   }
 
   private goTopology(): void {
     window.location.hash = '/';
+  }
+
+  /**
+   * The "make it appear in Home Assistant" step.
+   *
+   * The topology view is an add-on screen; Home Assistant entities only exist once the
+   * integration holds a config entry for the remote. That step was previously invisible
+   * here and the only pointer the user got was the red "Entities: Not Yet Added" badge
+   * on the device page, which links to the generic add-integration page and cannot
+   * succeed while the hub integration is already installed.
+   */
+  private renderHaIntegrationStep() {
+    if (this.haStatus === 'managed') {
+      return html`
+        <div class="ha-step ha-ok">
+          <span class="ha-icon">\u2705</span>
+          <div>
+            <strong>Added to Home Assistant</strong>
+            <p class="hint">
+              This remote's entities are available in Home Assistant.
+            </p>
+            <a class="btn" href=${`/config/devices/device/${this.haDeviceId}`} target="_blank" rel="noopener">
+              Open device in Home Assistant
+            </a>
+          </div>
+        </div>
+      `;
+    }
+
+    if (this.haStatus === 'checking' || this.haStatus === 'waiting-for-join') {
+      return html`
+        <div class="ha-step">
+          <span class="ha-icon"><span class="spinner"></span></span>
+          <div>
+            <strong>Waiting for the remote to join</strong>
+            <p class="hint">
+              Once the bridge sees it, this step adds it to Home Assistant so its entities appear.
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="ha-step ha-action">
+        <span class="ha-icon">\u26A0\uFE0F</span>
+        <div>
+          <strong>Last step: add it to Home Assistant</strong>
+          <p class="hint">
+            The remote is on the mesh, but Home Assistant has no device for it yet, so its
+            entities are not available. Add it here — the integration detects it
+            automatically. (Adding it from Devices &amp; Services does not work; that page
+            can only install the integration itself, which is already installed.)
+          </p>
+          ${this.haNotice ? html`<p class="hint ha-error">${this.haNotice}</p>` : nothing}
+          <button class="btn primary" ?disabled=${this.haBusy} @click=${() => void this.addToHomeAssistant()}>
+            ${this.haBusy ? 'Adding…' : 'Add to Home Assistant'}
+          </button>
+        </div>
+      </div>
+    `;
   }
 
   private credentialsLabel(): string {
@@ -564,6 +748,7 @@ export class EspRemoteWizard extends LitElement {
                     topology view automatically.
                   </p>
                 </div>
+                ${this.renderHaIntegrationStep()}
                 <button class="btn primary" @click=${this.goTopology}>Go to topology</button>
               `
             : nothing}
@@ -585,6 +770,54 @@ export class EspRemoteWizard extends LitElement {
       box-shadow: var(--shadow);
       border: 1px solid var(--line);
       margin-bottom: 20px;
+    }
+
+    /* Post-flash Home Assistant integration step. */
+    .ha-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      margin: 0 0 16px;
+    }
+
+    .ha-step .ha-icon {
+      font-size: 18px;
+      line-height: 1.2;
+      flex: 0 0 auto;
+    }
+
+    .ha-step strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .ha-step .hint {
+      margin: 0 0 10px;
+    }
+
+    .ha-step .hint:last-child {
+      margin-bottom: 0;
+    }
+
+    .ha-step .btn {
+      margin-top: 2px;
+    }
+
+    .ha-step.ha-ok {
+      border-color: var(--ok, #2e7d32);
+    }
+
+    .ha-step.ha-action {
+      border-color: var(--warn, #b26a00);
+    }
+
+    .ha-error {
+      color: var(--err, #c62828);
     }
 
     .card-header {

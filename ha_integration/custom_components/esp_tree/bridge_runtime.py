@@ -302,6 +302,7 @@ class EspTreeRuntime:
     def _schedule_remote_discovery(self, remote_mac: str, name: str, bridge_mac: str) -> None:
         remote_mac = norm_mac(remote_mac)
         bridge_mac = norm_mac(bridge_mac)
+        self._abort_stale_discovery_flow(remote_mac)
         if remote_mac in self._pending_remote_discoveries:
             return
         if remote_mac in self._remote_entry_ids:
@@ -321,6 +322,41 @@ class EspTreeRuntime:
                 bridge_mac,
             )
         )
+
+    def _abort_stale_discovery_flow(self, remote_mac: str) -> None:
+        """Clear a parked discovery flow for this remote before starting a new one.
+
+        Home Assistant refuses to start a second flow for the same (handler, unique id)
+        with `already_in_progress`. A flow that stopped at `discovery_confirm` used to
+        wait forever for a human, and because no UI ever rendered it the remote could
+        never be added -- every later discovery attempt was refused by that corpse.
+        That is what leaves the device page showing "Entities: Not Yet Added" while the
+        only offered remedy (Devices & Services) aborts with `already_configured`.
+
+        Only flows we are about to supersede are aborted, and only ones belonging to
+        this domain.
+        """
+        try:
+            flow_manager = self.hass.config_entries.flow
+            progress_entries = list(getattr(flow_manager, "async_progress")())
+            for progress in progress_entries:
+                if progress.get("handler") != DOMAIN:
+                    continue
+                context = progress.get("context") or {}
+                if norm_mac(context.get("unique_id") or "") != remote_mac:
+                    continue
+                flow_id = progress.get("flow_id")
+                if not flow_id:
+                    continue
+                _LOGGER.info(
+                    "aborting stale ESP Tree discovery flow %s (step %s) for %s",
+                    flow_id,
+                    progress.get("step_id"),
+                    remote_mac,
+                )
+                self.hass.config_entries.flow.async_abort(flow_id)
+        except Exception:
+            _LOGGER.debug("could not reconcile stale discovery flows", exc_info=True)
 
     async def _async_create_remote_entry(self, remote_mac: str, name: str, bridge_mac: str) -> None:
         try:

@@ -173,16 +173,39 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(title="ESP Tree", data=data)
 
     async def async_step_integration_discovery(self, discovery_info: dict) -> ConfigFlowResult:
-        """Triggered by bridge_runtime when new remote detected."""
+        """Triggered by bridge_runtime when new remote detected.
+
+        The remote is created straight away rather than waiting for a confirmation
+        form. There is nothing mandatory to ask -- the only field was an optional
+        area -- and leaving the flow parked in `discovery_confirm` meant the remote
+        never got a Home Assistant device: `/api/bridge/topology.json` reported
+        `ha_device_id: ""`, and the device-detail page dead-ended at
+        "Entities: Not Yet Added" pointing at a generic add-integration URL that is
+        not even the right destination for a flow that merely needed confirming.
+        Each newly discovered remote left another flow sitting unconfirmed.
+
+        An area can still be set afterwards from the device page.
+        """
         self._remote_info = discovery_info
         remote_mac = discovery_info["remote_mac"]
         await self.async_set_unique_id(remote_mac)
         self._abort_if_unique_id_configured()
         self.context["title_placeholders"] = {"name": discovery_info["name"]}
-        return await self.async_step_discovery_confirm()
+        _LOGGER.info("Auto-creating remote entry for %s (%s)", remote_mac, discovery_info["name"])
+        return self.async_create_entry(
+            title=discovery_info["name"],
+            data={
+                "type": "remote",
+                "remote_mac": remote_mac,
+                "bridge_mac": discovery_info["bridge_mac"],
+                "area_id": None,
+            },
+        )
 
     async def async_step_discovery_confirm(self, user_input=None) -> ConfigFlowResult:
-        """Show form with area selector + Add button."""
+        """Kept so an in-flight `discovery_confirm` flow (created before remotes were
+        auto-created) can still be completed, and so an area can be chosen
+        deliberately if this step is ever reached again."""
         if user_input is not None:
             info = self._remote_info
             return self.async_create_entry(

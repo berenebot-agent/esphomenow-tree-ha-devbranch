@@ -74,7 +74,9 @@ export class EspTopologyNode extends LitElement {
             <small>${this.node.mac}</small>
           </span>
           <span class="metrics">
-            <span class="${this.node.online ? '' : 'offline-metric'}">${this.node.online ? fmtDuration(this.node.uptime_s) : html`<button class="hide-pill" title="hide until back online" @click=${(e: Event) => { e.stopPropagation(); this.onHideDevice(this.node.mac); }}>✕ hide</button>`}</span>
+            ${this.node.online
+              ? html`<span>${fmtDuration(this.node.uptime_s)}</span>`
+              : html`<button class="hide-pill" title="hide until back online" @click=${(e: Event) => { e.stopPropagation(); this.onHideDevice(this.node.mac); }}>✕ hide</button>`}
             ${this.isRoot || this.node.last_seen_ago == null ? html`<span class="pill-placeholder">—</span>` : html`<span class="last-seen">${fmtDuration(this.node.last_seen_ago)} ago</span>`}
             ${this.isRoot ? html`<span class="pill-placeholder">—</span>` : this.node.online
               ? html`<span title="${this.node.rssi != null ? `${this.node.rssi} dBm` : ''}">${this.rssiBars(this.node.rssi)}${(this.node.hops ?? 0) > 0 ? `  ${this.node.hops}↷` : ''}</span>`
@@ -282,20 +284,14 @@ export class EspTopologyNode extends LitElement {
     }
 
     .icon-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       border: 1px solid #0f766e;
       background: #0f766e;
       color: #fff;
-      min-height: 36px;
-      padding: 0 16px;
+      padding: 0 14px;
       font: inherit;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
-      border-radius: 8px;
       cursor: pointer;
-      white-space: nowrap;
       transition: all 0.12s;
     }
 
@@ -353,22 +349,42 @@ export class EspTopologyNode extends LitElement {
     .metrics {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       min-width: 0;
       font-size: 12px;
       color: var(--muted);
       justify-content: flex-end;
     }
 
-    .metrics span {
+    /* One pill language for the row. Every pill and badge shares the same height,
+       radius and horizontal padding so a row reads as a single band. box-sizing is
+       set here because nothing sets it globally: without it a width:76px pill
+       actually rendered 92px (76 plus 2x8px padding), so each pill's real width
+       depended on its own padding rather than a shared column. */
+    .metrics span,
+    .metrics .hide-pill,
+    .pill-placeholder,
+    .config-badge,
+    .bridge-badge,
+    .ota-badge,
+    .icon-btn {
+      box-sizing: border-box;
+      min-height: 26px;
+      border-radius: 999px;
+      font-size: 12px;
+      line-height: 1;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: #f1f5f9;
-      padding: 3px 8px;
-      border-radius: 6px;
       white-space: nowrap;
-      width: 76px;
+    }
+
+    .metrics span {
+      background: #f1f5f9;
+      padding: 0 10px;
+      /* min-width, not width: the cells line up but a long value can still grow
+         instead of overflowing. */
+      min-width: 76px;
       text-align: center;
     }
 
@@ -378,13 +394,8 @@ export class EspTopologyNode extends LitElement {
     }
 
     .hide-pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 76px;
-      padding: 3px 8px;
+      padding: 0 10px;
       border: none;
-      border-radius: 6px;
       background: var(--danger);
       color: #fff;
       font: inherit;
@@ -398,14 +409,13 @@ export class EspTopologyNode extends LitElement {
     }
 
     .metrics .chip-name {
-      min-width: 72px;
+      min-width: 76px;
     }
 
     .pill-placeholder {
       background: #f1f5f9;
-      padding: 3px 8px;
-      border-radius: 6px;
-      width: 76px;
+      padding: 0 10px;
+      min-width: 76px;
       text-align: center;
       color: var(--muted);
     }
@@ -427,9 +437,7 @@ export class EspTopologyNode extends LitElement {
       color: #fff;
       font-size: 11px;
       font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 6px;
-      white-space: nowrap;
+      padding: 0 10px;
       cursor: pointer;
       transition: all 0.12s;
     }
