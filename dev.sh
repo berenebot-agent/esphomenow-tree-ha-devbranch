@@ -344,7 +344,6 @@ assert hasattr(RemoteLastSeen(), 'last_seen_bridge_uptime_s')
             git add ui/
             git add test/
             git add rootfs/
-            git add scripts/
             git add config.yaml
             git add Dockerfile
             git add requirements.txt
