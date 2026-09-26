@@ -66,11 +66,30 @@ def test_no_deprecated_async_get_device_by_identifiers() -> None:
 
 
 def test_no_deprecated_via_device() -> None:
-    """`via_device` stops working in HA 2027.8.0; use `via_device_id`."""
-    hits = _findings(r"via_device\s*=")
+    """`via_device` stops working in HA 2027.8.0; use `via_device_id`.
+
+    Matches the kwarg form AND the dict-key form used by device_info, e.g.
+    info["via_device"] = ... / "via_device": ... -- the dict form is how one
+    instance survived the first pass (HA attributed it to the async_add_entities
+    call site in sensor.py, not to remote_diagnostic_sensor.py where it lived).
+    """
+    hits = _findings(r"""via_device["']?\s*[=:]""")
     assert not hits, (
-        "deprecated via_device= (HA 2027.8.0); pass via_device_id (a device id) "
-        "instead -- see _via_device_id() in bridge_runtime.py:\n  " + "\n  ".join(hits)
+        "deprecated via_device (HA 2027.8.0); pass via_device_id (a device id) "
+        "instead -- see _via_device_id()/parent_device_id():\n  " + "\n  ".join(hits)
+    )
+
+
+def test_no_hardcoded_domain_in_device_identifiers() -> None:
+    """Identifiers must use the DOMAIN constant, not a literal \"esp_tree\".
+
+    A literal that does not match the real domain silently creates devices in a
+    different identifier space from the rest of the integration.
+    """
+    hits = _findings(r"""[\"']esp_tree[\"']\s*,""")
+    assert not hits, (
+        'hardcoded "esp_tree" domain literal in an identifier; import DOMAIN:\n  '
+        + "\n  ".join(hits)
     )
 
 

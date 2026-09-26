@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from .bridge_runtime import get_runtime
-from .const import CONF_BRIDGE_MAC, CONF_TYPE
+from .const import CONF_BRIDGE_MAC, CONF_TYPE, DOMAIN
 from .device_model import norm_mac
 
 
@@ -68,7 +68,7 @@ class BridgeDiagnosticSensor(SensorEntity):
         runtime = get_runtime(self.hass)
         bridge = runtime.bridge_snapshots.get(self._bridge_mac, {})
         return {
-            "identifiers": {(("esp_tree", self._bridge_mac))},
+            "identifiers": {((DOMAIN, self._bridge_mac))},
             "name": "ESP Tree Bridge",
             "manufacturer": "ESPHome",
             "model": bridge.get("chip_name") or "esp_tree_bridge",

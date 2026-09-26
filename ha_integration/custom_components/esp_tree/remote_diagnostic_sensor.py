@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from .bridge_runtime import get_runtime
+from .const import DOMAIN
 from .device_model import norm_mac
 
 
@@ -92,13 +93,16 @@ class RemoteDiagnosticSensor(SensorEntity):
         runtime = get_runtime(self.hass)
         remote = runtime.remotes.get(self._remote_mac)
         name = remote.display_name if remote else self._remote_mac
+        # via_device_id, not the deprecated via_device identifier tuple (HA
+        # deprecates via_device from 2027.8.0). The parent device is the bridge.
+        via_device_id = runtime.parent_device_id(remote.bridge_mac) if remote and remote.bridge_mac else None
         return {
-            "identifiers": {(("esp_tree", self._remote_mac))},
+            "identifiers": {((DOMAIN, self._remote_mac))},
             "name": name,
             "manufacturer": remote.manufacturer if remote else "ESPHome",
             "model": remote.model if remote else "esp_tree_remote",
             "sw_version": remote.project_version if remote else None,
-            "via_device": (("esp_tree", remote.bridge_mac)) if remote and remote.bridge_mac else None,
+            "via_device_id": via_device_id,
         }
 
     @property
