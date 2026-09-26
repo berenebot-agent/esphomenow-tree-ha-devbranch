@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/b7_vtaskdelay_test.dir/link.d CMakeFiles/b7_vtaskdelay_test.dir/b7_vtaskdelay_test.cpp.o -o b7_vtaskdelay_test

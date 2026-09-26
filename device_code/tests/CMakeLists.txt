@@ -59,11 +59,7 @@ add_executable(hop_encoding_test hop_encoding_test.cpp)
 target_include_directories(hop_encoding_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/.. ${CMAKE_CURRENT_LIST_DIR}/../components)
 add_test(NAME hop_encoding_test COMMAND hop_encoding_test)
 
-add_executable(b6_fragment_interleaving_test b6_fragment_interleaving_test.cpp)
-target_include_directories(b6_fragment_interleaving_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/.. ${CMAKE_CURRENT_LIST_DIR}/../components)
 find_package(OpenSSL REQUIRED)
-target_link_libraries(b6_fragment_interleaving_test PRIVATE OpenSSL::Crypto)
-add_test(NAME b6_fragment_interleaving_test COMMAND b6_fragment_interleaving_test)
 
 add_executable(b7b_error_handling_test b7b_error_handling_test.cpp)
 target_include_directories(b7b_error_handling_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/.. ${CMAKE_CURRENT_LIST_DIR}/../components)

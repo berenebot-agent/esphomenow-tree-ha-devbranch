@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <vector>
-#include "../components/components/esp_tree_common/cobs_codec.h"
+#include "../components/esp_tree_common/cobs_codec.h"
 
 using namespace esphome::esp_tree;
 

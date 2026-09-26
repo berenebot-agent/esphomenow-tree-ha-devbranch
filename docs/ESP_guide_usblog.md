@@ -21,26 +21,28 @@ sudo usermod -a -G dialout $USER
 
 ## Usage
 
+Run from the repository root:
+
 ```bash
-python3 esplog-serial.py <yaml_file> [device_path]
+python3 device_code/scripts/ha_esplog_serial.py <yaml_file> [device_path]
 ```
 
 | Argument       | Default         | Description                        |
 |----------------|-----------------|------------------------------------|
-| `yaml_file`    | (required)      | YAML from `demos/` or absolute path|
+| `yaml_file`    | (required)      | YAML from `device_code/demos/` or absolute path |
 | `device_path`  | `/dev/ttyUSB0`  | Serial device path                 |
 
 **Examples:**
 
 ```bash
 # Using default /dev/ttyUSB0
-python3 esplog-serial.py espnow-microusb-1.yml
+python3 device_code/scripts/ha_esplog_serial.py espnow-microusb-1.yml
 
 # Explicit device
-python3 esplog-serial.py espnow-microusb-1.yml /dev/ttyUSB1
+python3 device_code/scripts/ha_esplog_serial.py espnow-microusb-1.yml /dev/ttyUSB1
 
 # Absolute path to YAML
-python3 esplog-serial.py /path/to/mydevice.yml /dev/ttyUSB0
+python3 device_code/scripts/ha_esplog_serial.py /path/to/mydevice.yml /dev/ttyUSB0
 ```
 
 **Stopping:** `Ctrl+C` — cleans up the Docker container automatically.
@@ -58,9 +60,9 @@ python3 esplog-serial.py /path/to/mydevice.yml /dev/ttyUSB0
 
 ## Relationship to OTA Logging (`esplog-master.py`)
 
-`esplog-serial.py` and `esplog-master.py` are **completely independent**:
+`ha_esplog_serial.py` and `esplog-master.py` are **completely independent**:
 
-| Feature               | `esplog-master.py`              | `esplog-serial.py`           |
+| Feature               | `esplog-master.py`              | `ha_esplog_serial.py`        |
 |-----------------------|----------------------------------|-------------------------------|
 | Transport             | OTA (WiFi/mDNS)                  | USB serial direct             |
 | Device target         | `--device OTA`                   | `--device /dev/ttyUSB0`      |
@@ -70,7 +72,11 @@ python3 esplog-serial.py /path/to/mydevice.yml /dev/ttyUSB0
 | Docker container per device | Yes                      | No (single container, one-shot)|
 | Use case              | Remote/misc devices on network   | Direct USB debug              |
 
-Running `esplog-serial.py` has **zero effect** on any devices being logged by `esplog-master.py` via OTA. They are separate subprocesses with no shared state.
+`esplog-master.py` is a bench tool and lives outside this repository (in the
+project's `tools/archive/`), alongside its runner `ha_esplog_run.sh`. The
+script in this repo is `ha_esplog_serial.py` only.
+
+Running `ha_esplog_serial.py` has **zero effect** on any devices being logged by `esplog-master.py` via OTA. They are separate subprocesses with no shared state.
 
 ---
 

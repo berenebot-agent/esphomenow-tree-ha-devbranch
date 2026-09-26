@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/command_queue_test.dir/link.d CMakeFiles/command_queue_test.dir/command_queue_test.cpp.o -o command_queue_test

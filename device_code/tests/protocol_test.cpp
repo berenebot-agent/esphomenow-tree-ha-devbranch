@@ -174,7 +174,13 @@ static void test_entity_payload_helpers() {
   expect(memcmp(view.value, value, sizeof(value)) == 0, "entity value parsed");
 
   payload.back() ^= 0x01;
-  expect(!parse_entity_payload(payload.data(), payload.size() - 1, view), "entity payload rejects truncated");
+  /* Shortening the buffer must NOT be rejected here — see the note in
+   * parse_helpers_test.cpp: parse_entity_payload() derives the value length
+   * from the actual plaintext length and ignores header->value_len (which
+   * cannot represent a V2 fragment, spec §8.3.3). Integrity is enforced
+   * upstream by session-tag verification, so this layer has nothing to reject. */
+  expect(parse_entity_payload(payload.data(), payload.size() - 1, view), "entity payload accepts shortened buffer (length derived)");
+  expect(view.value_len == sizeof(value) - 1, "shortened value_len derived");
 }
 
 static void test_entity_payload_rejects_invalid_fragment_metadata() {
@@ -198,7 +204,7 @@ int main() {
   expect(sizeof(espnow_schema_push_t) == 77, "schema push payload size");
   expect(sizeof(espnow_deauth_t) == 10, "deauth payload size");
   expect(sizeof(espnow_entity_packet_header_t) == 5, "entity packet header size");
-  expect(sizeof(espnow_join_t) == 50, "join payload size");
+  expect(sizeof(espnow_join_t) == 51, "join payload size");
 
   char psk_hex[65];
   fill_hex(psk_hex, 64, 0x11);

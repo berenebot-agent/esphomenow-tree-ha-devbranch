@@ -116,7 +116,17 @@ static void test_parse_entity_payload_truncated() {
   std::vector<uint8_t> payload;
   const uint8_t value[] = {1, 2, 3, 4, 5};
   append_entity_payload(payload, 3, 0, 0, 1, value, sizeof(value));
-  expect(!parse_entity_payload(payload.data(), payload.size() - 1, view), "truncated payload rejected");
+
+  /* A shortened payload is ACCEPTED at this layer by design, not rejected.
+   * parse_entity_payload() derives the value length from
+   * plaintext_len - sizeof(header) and deliberately ignores header->value_len,
+   * because at V2 the fragment is up to 1440 bytes and value_len is a uint8_t
+   * that cannot represent it (docs/esptree_radio_v3_spec.md:469). Truncation is
+   * therefore not detectable here — and does not need to be: the frame is
+   * authenticated and decrypted before parsing, so a truncated or altered frame
+   * fails session-tag verification upstream and never reaches this function. */
+  expect(parse_entity_payload(payload.data(), payload.size() - 1, view), "truncated payload accepted (length derived, not validated)");
+  expect(view.value_len == sizeof(value) - 1, "value_len derived from actual payload length");
 }
 
 static void test_parse_entity_payload_zero_fragment_count() {

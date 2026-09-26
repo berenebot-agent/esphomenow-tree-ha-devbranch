@@ -15,12 +15,15 @@ namespace {
 
 int g_failures = 0;
 
-void expect(bool condition, const char *message) {
+void expect_impl(bool condition, const char *message, int line) {
   if (!condition) {
-    std::cerr << "FAIL: " << message << '\n';
+    std::cerr << "FAIL(" << line << "): " << message << '\n';
     ++g_failures;
   }
 }
+
+/* Macros so every failure reports the source line that asserted it. */
+#define expect(condition, message) expect_impl((condition), (message), __LINE__)
 
 struct SendRecord {
   espnow_packet_type_t type{PKT_DISCOVER};
@@ -36,7 +39,13 @@ struct TestRig {
   std::vector<SendRecord> sends;
   ESPNowOTAManager manager;
 
-  TestRig() {
+  TestRig() { wire_callbacks(); }
+
+  // ESPNowOTAManager holds a std::recursive_mutex, so it is neither copyable
+  // nor move-assignable; configure it at construction instead of assigning.
+  explicit TestRig(const ESPNowOTAManager::Config &config) : manager(config) { wire_callbacks(); }
+
+  void wire_callbacks() {
     manager.set_send_frame_fn([this](const uint8_t *, espnow_packet_type_t type, const uint8_t *payload,
                                      size_t len, uint32_t *tx_counter_out) {
       if (no_mem_failures_remaining > 0) {
@@ -106,12 +115,29 @@ struct TestRig {
     manager.on_file_ack(leaf_mac.data(), ack, trailing, sizeof(trailing));
   }
 
+  /* One manager loop cycle's worth of mock time. The manager only transmits one
+   * chunk per loop pass when config tx_cooldown_ms (default 2 ms,
+   * bridge_ota_manager.h:26) has elapsed since the previous chunk
+   * (bridge_ota_manager.cpp:562-565), and its timeout bookkeeping is
+   * timestamp-gated (`blast_complete_sent_ms > 0`,
+   * bridge_ota_manager.cpp:297; `last_remote_activity_ms > 0`,
+   * bridge_ota_manager.cpp:273). Advancing the clock before each pump models a
+   * real device loop (whose millis() is well past 0) and keeps every timestamp
+   * the manager records non-zero. */
+  static constexpr uint32_t kLoopCycleMs = 3;
+
   bool feed_chunk(uint32_t sequence, uint8_t base, size_t len) {
     std::vector<uint8_t> chunk(len, 0);
     for (size_t i = 0; i < len; ++i) {
       chunk[i] = static_cast<uint8_t>(base + i);
     }
-    return manager.on_source_chunk(sequence, chunk.data(), chunk.size());
+    /* on_source_chunk() only QUEUES the chunk; transmission happens in
+     * pump_queued_chunks_(), which is driven from loop(). Pump once per chunk so
+     * the test observes the wire traffic a real run would produce. */
+    test::advance_mock_time_ms(kLoopCycleMs);
+    const bool accepted = manager.on_source_chunk(sequence, chunk.data(), chunk.size());
+    manager.loop();
+    return accepted;
   }
 
   SendRecord &last_send() { return sends.back(); }
@@ -134,6 +160,25 @@ struct TestRig {
       }
     }
     return nullptr;
+  }
+
+  /* Assert-and-return so a missing BLAST_COMPLETE is reported as a failure with
+   * a useful message instead of segfaulting on a null dereference further down
+   * (which also aborts the remaining assertions in the test). A sentinel is
+   * returned on failure so callers that immediately dereference are still safe;
+   * the failure has already been recorded by expect(). */
+  SendRecord *require_last_bc(const char *where) {
+    static SendRecord sentinel{};
+    SendRecord *rec = find_last_bc();
+    expect(rec != nullptr, where);
+    return rec != nullptr ? rec : &sentinel;
+  }
+
+  SendRecord *require_last_end(const char *where) {
+    static SendRecord sentinel{};
+    SendRecord *rec = find_last_end();
+    expect(rec != nullptr, where);
+    return rec != nullptr ? rec : &sentinel;
   }
 
   SendRecord *find_last_end() {
@@ -254,9 +299,10 @@ for (uint32_t seq = 0; seq < 4; ++seq) {
     rig.feed_chunk(seq, static_cast<uint8_t>(seq * 10), 221);
   }
 
-  expect(rig.sends.size() == 6, "4 data chunks + BLAST_COMPLETE + END");
-  auto *bc = rig.find_last_bc();
-  expect(bc != nullptr, "BLAST_COMPLETE sent");
+  /* 1 announce + 4 data chunks + BLAST_COMPLETE (the END comes later, once the
+   * remote acks the BLAST_COMPLETE with an all-received GAPS bitmap). */
+  expect(rig.sends.size() == 6, "1 announce + 4 data chunks + BLAST_COMPLETE");
+  auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
   expect(bc->payload.size() == 3, "BLAST_COMPLETE is 3 bytes");
   expect(bc->payload[0] == ESPNOW_FILE_PHASE_BLAST_COMPLETE, "phase is BLAST_COMPLETE");
 
@@ -269,8 +315,9 @@ for (uint32_t seq = 0; seq < 4; ++seq) {
 
   rig.manager.loop();
 
-  auto *end_rec = rig.find_last_end();
-  expect(end_rec != nullptr, "END packet sent after last increment complete");
+  auto *end_rec = rig.require_last_end("END packet sent after last increment complete");
+  expect(end_rec->payload.size() == 1, "END is 1 byte");
+  expect(end_rec->payload[0] == ESPNOW_FILE_PHASE_END, "phase is END");
 
   rig.send_complete(end_rec->tx_counter);
 
@@ -301,7 +348,7 @@ void test_blast_complete_then_gaps_empty_multi_increment() {
       rig.feed_chunk(seq, static_cast<uint8_t>(i * 10), 221);
     }
 
-    auto *bc = rig.find_last_bc();
+    auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
     expect(bc != nullptr, "BLAST_COMPLETE sent for increment");
 
     uint16_t expected_inc_idx = static_cast<uint16_t>(inc);
@@ -312,7 +359,17 @@ void test_blast_complete_then_gaps_empty_multi_increment() {
     rig.send_gaps_empty(bc_tx);
   }
 
-  expect(!rig.manager.is_busy(), "manager not busy after 2 increments");
+  /* The last increment's all-received GAPS ack does NOT finish the transfer:
+   * handle_gaps_ack_() switches to State::ENDING and sends END
+   * (bridge_ota_manager.cpp:709-715); the transfer only completes when the
+   * remote's FILE_ACK_COMPLETE arrives (bridge_ota_manager.cpp:793-800). */
+  auto *end_rec = rig.require_last_end("END sent after both increments");
+  expect(end_rec->payload.size() == 1, "END is 1 byte");
+  expect(end_rec->payload[0] == ESPNOW_FILE_PHASE_END, "phase is END");
+
+  rig.send_complete(end_rec->tx_counter);
+
+  expect(!rig.manager.is_busy(), "manager not busy after COMPLETE for 2 increments");
 }
 
 void test_blast_complete_then_gaps_with_missing_chunks() {
@@ -327,13 +384,18 @@ void test_blast_complete_then_gaps_with_missing_chunks() {
 
   expect(rig.manager.total_increments() == 2, "2 increments");
 
+  /* BLAST_COMPLETE is only emitted once every requested sequence of the
+   * increment has been handed to and pumped out by the manager
+   * (bridge_ota_manager.cpp:592-599: pending_chunks_ empty AND
+   * requested_sequences empty). Feed a full 37-chunk increment, then let the
+   * remote's bitmap report chunk 36 as missing. */
   uint32_t inc0_start = 0;
-  for (uint32_t seq = inc0_start; seq < inc0_start + 36; ++seq) {
+  for (uint32_t seq = inc0_start; seq < inc0_start + 37; ++seq) {
     rig.feed_chunk(seq, static_cast<uint8_t>(seq * 10), 221);
   }
 
-  expect(rig.sends.size() == 36 + 1, "36 data chunks + BLAST_COMPLETE");
-  auto *bc = rig.find_last_bc();
+  expect(rig.sends.size() == 1 + 37 + 1, "1 announce + 37 data chunks + BLAST_COMPLETE");
+  auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
   const uint32_t bc_tx = bc->tx_counter;
 
   auto bitmap = build_bitmap_missing_last(37);
@@ -341,11 +403,13 @@ void test_blast_complete_then_gaps_with_missing_chunks() {
 
   expect(rig.manager.increment_tracker().retransmit_round == 1, "retransmit_round = 1");
   expect(rig.manager.increment_tracker().gap_sequences.size() == 1, "1 gap (chunk 36 missing)");
-  expect(*rig.manager.increment_tracker().gap_sequences.begin() == 36, "gap is seq 36");
+  if (!rig.manager.increment_tracker().gap_sequences.empty()) {
+    expect(*rig.manager.increment_tracker().gap_sequences.begin() == 36, "gap is seq 36");
+  }
 
   rig.feed_chunk(36, 0xBB, 221);
 
-  bc = rig.find_last_bc();
+  bc = rig.require_last_bc("BLAST_COMPLETE re-sent");
   const uint32_t bc_tx2 = bc->tx_counter;
   expect(bc_tx2 != bc_tx, "second BLAST_COMPLETE has new tx_counter");
 
@@ -356,14 +420,21 @@ void test_blast_complete_then_gaps_with_missing_chunks() {
 
   rig.feed_chunk(37, 0xCC, 59);
 
-  bc = rig.find_last_bc();
+  bc = rig.require_last_bc("BLAST_COMPLETE re-sent");
   expect(bc != nullptr, "BLAST_COMPLETE for last increment sent");
+  const uint32_t bc_tx3 = bc->tx_counter;
+  expect(bc_tx3 != bc_tx2, "last increment BLAST_COMPLETE has new tx_counter");
 
-  auto *end_rec = rig.find_last_end();
-  expect(end_rec != nullptr, "END sent");
+  /* END for the last increment is emitted when the remote acks that
+   * BLAST_COMPLETE with an all-received (empty) GAPS bitmap
+   * (bridge_ota_manager.cpp:709-715). */
+  rig.send_gaps_empty(bc_tx3);
+
+  auto *end_rec = rig.require_last_end("END sent after last increment's GAPS ack");
+  expect(end_rec->payload.size() == 1, "END is 1 byte");
 
   rig.send_complete(end_rec->tx_counter);
-  expect(!rig.manager.is_busy(), "manager done after gaps empty");
+  expect(!rig.manager.is_busy(), "manager done after COMPLETE");
 }
 
 void test_blast_complete_timeout_retry() {
@@ -381,16 +452,28 @@ void test_blast_complete_timeout_retry() {
     sends_before_timeout = rig.sends.size();
   }
 
-  auto *bc = rig.find_last_bc();
+  auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
   const uint32_t first_bc_tx = bc->tx_counter;
 
   rig.manager.loop();
   expect(rig.sends.size() == sends_before_timeout, "no new sends before timeout");
 
-  for (int i = 0; i < ESPNOW_MAX_BLAST_COMPLETE_RETRIES; ++i) {
+  /* Each timeout window re-sends BLAST_COMPLETE and increments
+   * blast_complete_retries (bridge_ota_manager.cpp:303, 422); the initial send
+   * already counted as retry 1. The guard is `blast_complete_retries >=
+   * ESPNOW_MAX_BLAST_COMPLETE_RETRIES` (bridge_ota_manager.cpp:299), so the
+   * 20th window aborts. */
+  for (int i = 0; i < ESPNOW_MAX_BLAST_COMPLETE_RETRIES - 1; ++i) {
     test::advance_mock_time_ms(ESPNOW_BLAST_COMPLETE_TIMEOUT_MS);
     rig.manager.loop();
   }
+
+  auto *retry_bc = rig.require_last_bc("BLAST_COMPLETE retried on timeout");
+  expect(retry_bc->tx_counter != first_bc_tx, "retry BLAST_COMPLETE has a new tx_counter");
+  expect(rig.manager.is_busy(), "still busy while retries remain");
+
+  test::advance_mock_time_ms(ESPNOW_BLAST_COMPLETE_TIMEOUT_MS);
+  rig.manager.loop();
 
   expect(!rig.manager.is_busy(), "manager aborted after max retries");
   expect(rig.manager.last_error() == "BLAST_COMPLETE retry limit exceeded", "correct error");
@@ -406,14 +489,39 @@ void test_retransmit_rounds_exceeded() {
   const uint32_t announce_tx = rig.sends.front().tx_counter;
   rig.send_accept(announce_tx, 221, 8);
 
-  uint32_t bc_tx = 0;
+  /* Each retransmit round needs a full blast of the increment before the
+   * manager will emit BLAST_COMPLETE: pump_queued_chunks_() only sends it when
+   * pending_chunks_ and requested_sequences are both empty
+   * (bridge_ota_manager.cpp:592-599). Reporting chunk 36 missing then makes
+   * handle_gaps_ack_() open a new retransmit round (bridge_ota_manager.cpp:768).
+   * The guard `retransmit_round >= ESPNOW_MAX_RETRANSMIT_ROUNDS`
+   * (bridge_ota_manager.cpp:734) aborts on the bitmap that arrives when the
+   * round counter already reads 10, i.e. the 11th bitmap. */
   for (int round = 0; round <= ESPNOW_MAX_RETRANSMIT_ROUNDS; ++round) {
-    rig.feed_chunk(round, static_cast<uint8_t>(round * 10), 221);
+    const uint32_t inc_start = static_cast<uint32_t>(rig.manager.current_increment()) * 37;
 
-    bc_tx = rig.find_last_bc()->tx_counter;
+    for (uint32_t seq = inc_start; seq < inc_start + 37; ++seq) {
+      rig.feed_chunk(seq, static_cast<uint8_t>(seq * 10), 221);
+    }
+
+    auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
+    expect(bc->payload.size() == 3, "BLAST_COMPLETE is 3 bytes");
 
     auto bitmap = build_bitmap_missing_last(37);
-    rig.send_gaps_bitmap(bc_tx, bitmap.data(), bitmap.size());
+    rig.send_gaps_bitmap(bc->tx_counter, bitmap.data(), bitmap.size());
+
+    /* Read the counters before the aborted (11th) bitmap: fail_transfer_() calls
+     * reset_()/IncrementTracker::reset() (bridge_ota_manager.cpp:829-830), which
+     * zeroes retransmit_round. */
+    if (!rig.manager.is_busy()) {
+      expect(rig.manager.increment_tracker().retransmit_round == 0,
+             "tracker reset by the abort");
+      break;
+    }
+    expect(rig.manager.increment_tracker().retransmit_round == round + 1,
+           "retransmit_round advanced per bitmap");
+    expect(rig.manager.increment_tracker().current_increment == 0,
+           "increment never advanced while gaps persisted");
   }
 
   expect(!rig.manager.is_busy(), "manager aborted after retransmit rounds exceeded");
@@ -433,7 +541,16 @@ void test_radio_silence_abort() {
     rig.feed_chunk(seq, static_cast<uint8_t>(seq * 10), 221);
   }
 
-  test::advance_mock_time_ms(ESPNOW_RADIO_SILENCE_ABORT_MS);
+  /* The 4th chunk completes the increment, so the manager is in
+   * State::WAITING_GAPS waiting for the remote's GAPS bitmap. That state uses
+   * the longer silence window: `silence_timeout_ms = (state_ ==
+   * State::WAITING_GAPS) ? ESPNOW_WAITING_GAPS_TIMEOUT_MS :
+   * ESPNOW_RADIO_SILENCE_ABORT_MS` (bridge_ota_manager.cpp:275). */
+  test::advance_mock_time_ms(ESPNOW_RADIO_SILENCE_ABORT_MS + 1);
+  rig.manager.loop();
+  expect(rig.manager.is_busy(), "WAITING_GAPS survives the BLASTING silence timeout");
+
+  test::advance_mock_time_ms(ESPNOW_WAITING_GAPS_TIMEOUT_MS - ESPNOW_RADIO_SILENCE_ABORT_MS);
   rig.manager.loop();
 
   expect(!rig.manager.is_busy(), "manager aborted on radio silence");
@@ -467,7 +584,7 @@ void test_stale_gaps_ack_ignored() {
     rig.feed_chunk(seq, static_cast<uint8_t>(seq * 10), 221);
   }
 
-  auto *bc = rig.find_last_bc();
+  auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
   const uint32_t bc_tx = bc->tx_counter;
 
   espnow_ack_t stale_ack{};
@@ -501,7 +618,7 @@ void test_last_increment_partial() {
     rig.feed_chunk(seq, 0xAA, 221);
   }
 
-  auto *bc = rig.find_last_bc();
+  auto *bc = rig.require_last_bc("BLAST_COMPLETE sent");
   const uint32_t bc_tx0 = bc->tx_counter;
   rig.send_gaps_empty(bc_tx0);
 
@@ -509,11 +626,19 @@ void test_last_increment_partial() {
 
   rig.feed_chunk(37, 0xBB, 59);
 
-  bc = rig.find_last_bc();
+  bc = rig.require_last_bc("BLAST_COMPLETE re-sent");
   expect(bc != nullptr, "BLAST_COMPLETE sent for last increment");
 
-  auto *end_rec = rig.find_last_end();
-  expect(end_rec != nullptr, "END sent after partial last increment");
+  /* The partial last increment ends with an all-received GAPS ack, which is what
+   * triggers the END (bridge_ota_manager.cpp:696-715), after which only the
+   * remote's COMPLETE ack clears the transfer (bridge_ota_manager.cpp:793-800).
+   * The manager never reports itself idle on its own once the last increment has
+   * been acked, so no loop() can finish the transfer. */
+  rig.send_gaps_empty(bc->tx_counter);
+
+  auto *end_rec = rig.require_last_end("END sent after partial last increment");
+  expect(end_rec->payload.size() == 1, "END is 1 byte");
+  expect(end_rec->payload[0] == ESPNOW_FILE_PHASE_END, "phase is END");
 
   rig.send_complete(end_rec->tx_counter);
   expect(!rig.manager.is_busy(), "manager complete after partial last increment");
@@ -522,10 +647,9 @@ void test_last_increment_partial() {
 void test_global_timeout() {
   test::reset_mock_state();
 
-  TestRig rig;
   ESPNowOTAManager::Config cfg;
   cfg.global_timeout_ms = 1000;
-  rig.manager = ESPNowOTAManager(cfg);
+  TestRig rig(cfg);
 
   expect(rig.manager.start_transfer(rig.leaf_mac.data(), 884, rig.md5.data(), ESPNOW_FILE_ACTION_OTA_FLASH, 250),
          "transfer starts");
@@ -533,6 +657,14 @@ void test_global_timeout() {
   rig.send_accept(announce_tx, 221, 8);
 
   test::advance_mock_time_ms(1000);
+  rig.manager.loop();
+  expect(rig.manager.is_busy(), "not aborted just before the deadline");
+  expect(rig.manager.last_error().empty(), "no error just before the deadline");
+
+  /* loop() aborts only once the start has aged *past* the limit:
+   * `(now - transfer_started_ms_) > config_.global_timeout_ms`
+   * (bridge_ota_manager.cpp:265). */
+  test::advance_mock_time_ms(6000);
   rig.manager.loop();
 
   expect(!rig.manager.is_busy(), "manager aborted on global timeout");

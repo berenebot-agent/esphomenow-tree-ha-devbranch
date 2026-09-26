@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/allowed_parents_config_test.dir/link.d CMakeFiles/allowed_parents_config_test.dir/allowed_parents_config_test.cpp.o -o allowed_parents_config_test

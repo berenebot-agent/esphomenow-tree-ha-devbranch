@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone ESPHome serial log viewer for /dev/ttyUSB0
-Usage: python3 esplog-serial.py <yaml_file> [device_path]
+Usage: python3 device_code/scripts/ha_esplog_serial.py <yaml_file> [device_path]
 Default device: /dev/ttyUSB0
 """
 
@@ -11,14 +11,16 @@ import signal
 import os
 from pathlib import Path
 
-PROJ_DIR = Path(__file__).parent.resolve()
+# This script lives in device_code/scripts/, but the demos and the ESPHome
+# working directory are device_code/, so resolve one level up.
+PROJ_DIR = Path(__file__).parent.parent.resolve()
 DEMOS_DIR = PROJ_DIR / "demos"
 DOCKER_IMG = "ghcr.io/esphome/esphome:latest"
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python3 esplog-serial.py <yaml_file> [device_path]")
+        print("Usage: python3 device_code/scripts/ha_esplog_serial.py <yaml_file> [device_path]")
         print("       device_path defaults to /dev/ttyUSB0")
         sys.exit(1)
 

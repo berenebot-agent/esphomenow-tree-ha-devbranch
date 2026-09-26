@@ -94,14 +94,11 @@ Prefer a cached `.ota.bin` when flashing an already-built target. Never commit f
 
 ### Logging
 
-Start or inspect the network log collector with:
+For direct USB serial logging, follow `docs/ESP_guide_usblog.md`.
 
-```bash
-./device_code/scripts/ha_esplog_run.sh restart
-./device_code/scripts/ha_esplog_run.sh status
-```
-
-The collector exposes `http://localhost:5555`, with `/stream`, `/status`, and `/ui` endpoints. For direct USB serial logging, follow `docs/ESP_guide_usblog.md`.
+The OTA/mDNS multi-device log collector (`esplog-master.py`, HTTP on `:5555`)
+is a bench tool and deliberately lives outside this repository, in the
+project's `tools/archive/` directory. It is not part of the add-on.
 
 ### Unified menu
 

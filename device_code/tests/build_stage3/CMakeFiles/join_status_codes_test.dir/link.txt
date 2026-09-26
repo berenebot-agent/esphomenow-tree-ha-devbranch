@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/join_status_codes_test.dir/link.d CMakeFiles/join_status_codes_test.dir/join_status_codes_test.cpp.o -o join_status_codes_test

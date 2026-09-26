@@ -105,6 +105,30 @@ jobs:
         working-directory: ha_integration
         run: python -m pytest -p no:cacheprovider tests -v
 
+  cpp-tests:
+    name: Firmware C++ tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      # The C++ tests build device_code/components directly, so they catch
+      # protocol/packed-struct regressions that the Python suites cannot see.
+      # They are host builds (no ESP-IDF toolchain required).
+      - name: Configure and build
+        run: |
+          cmake -S device_code/tests -B /tmp/cpp-build
+          cmake --build /tmp/cpp-build --parallel
+
+      - name: Run firmware C++ tests
+        working-directory: /tmp/cpp-build
+        run: ctest --output-on-failure
+
   required:
     name: CI Required
     runs-on: ubuntu-latest
@@ -112,17 +136,21 @@ jobs:
     needs:
       - ui-dist
       - regression-tests
+      - cpp-tests
 
     steps:
       - name: Verify required jobs passed
         env:
           UI_DIST_RESULT: ${{ needs.ui-dist.result }}
           REGRESSION_RESULT: ${{ needs.regression-tests.result }}
+          CPP_RESULT: ${{ needs.cpp-tests.result }}
         shell: bash
         run: |
           set -euo pipefail
           echo "UI dist: $UI_DIST_RESULT"
           echo "Regression tests: $REGRESSION_RESULT"
+          echo "Firmware C++ tests: $CPP_RESULT"
 
           [[ "$UI_DIST_RESULT" == "success" ]]
           [[ "$REGRESSION_RESULT" == "success" ]]
+          [[ "$CPP_RESULT" == "success" ]]

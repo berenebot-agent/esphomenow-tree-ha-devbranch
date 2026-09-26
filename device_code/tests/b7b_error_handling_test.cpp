@@ -66,8 +66,12 @@ static void test_invalid_hop_count() {
   header.packet_type = PKT_DISCOVER;
   header.hop_count = ESPNOW_HOPS_MAKE(ESPNOW_HOPS_DIR_UP, 0x7F);
 
+  /* hop_count is a 4-bit field (ESPNOW_HOPS_COUNT_MASK == 0x0Fu); the upper
+   * nibble carries the direction/parent-check flags. ESPNOW_HOPS_MAKE() masks
+   * the count, so 0x7F cannot survive the round trip — the extracted count is
+   * 0x0F, not 0x7F. ESPNOW_HOPS_LIMIT (8) is the practical ceiling. */
   uint8_t hop_count = ESPNOW_HOPS_COUNT(header.hop_count);
-  expect(hop_count == 0x7F, "hop count extracted correctly");
+  expect(hop_count == 0x0F, "hop count extracted correctly (4-bit field, value masked)");
 }
 
 static void test_null_payload_for_encrypted() {

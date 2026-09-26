@@ -49,8 +49,9 @@ BRIDGE_HOST=192.168.1.50 ./start.sh
 
 All data (SQLite DB, firmware uploads, device configs, PlatformIO cache) is stored in:
 ```
-/home/ben/ai-hermes-agent/cache/ha-tree-addon-cache/
+.cache/ha-tree-addon-cache/
 ```
+(relative to the repository root; gitignored). Override with `CACHE_DIR=/your/path`.
 
 This is mapped to `/data` inside the container. Data persists across container restarts.
 

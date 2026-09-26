@@ -22,8 +22,8 @@ int main() {
   expect(sizeof(espnow_file_announce_t) == 36, "file announce payload size");
   expect(sizeof(espnow_file_end_t) == 1, "file end payload size");
   expect(sizeof(espnow_file_abort_t) == 2, "file abort payload size");
-  expect(sizeof(espnow_file_data_header_t) == 8, "file data header size");
-  expect(ESPNOW_FILE_DEFAULT_CHUNK_SIZE == 217, "default file chunk size");
+  expect(sizeof(espnow_file_data_header_t) == 4, "file data header size");
+  expect(ESPNOW_FILE_DEFAULT_CHUNK_SIZE == 221, "default file chunk size");
 
   return failures == 0 ? 0 : 1;
 }

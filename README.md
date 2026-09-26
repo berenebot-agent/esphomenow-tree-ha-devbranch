@@ -33,7 +33,7 @@ stored, but at most one is active at a time.
 | `device_code/tests/` | C++ unit tests |
 | `test/` | Standalone add-on UI harness; Home Assistant-only setup and cleanup actions are unavailable |
 | `device_code/scripts/` | Compile, flash and serial-log helpers used by `dev.sh` |
-| `docs/` | Live specifications and guides (protocol, API, USB logging, standalone) |
+| `docs/` | Live specifications and guides (protocol, API, configuration, board matrix, troubleshooting, USB logging, standalone) |
 | `rootfs/` | Container init: installs the integration into `/config`, announces discovery |
 
 > Historical plans, roadmaps, archives and mockups are intentionally **not** in
@@ -52,7 +52,8 @@ See `CONTRIBUTING.md` for the per-domain entry points.
   `esp32-c5-devkitc-1`; shipped remote demos use classic ESP32, ESP32-C3 and
   ESP8266 boards. ESP8266 (ESP-01/ESP-12E) leaves use `espnow_82xx_remote`, are
   regular-mode only, and have the limitations documented in
-  `docs/esptree_radio_v3_spec.md` § ESP82xx Leaf Limitations.
+  `docs/esptree_radio_v3_spec.md` § ESP82xx Leaf Limitations. Board-by-board
+  suitability is in `docs/BOARD_MATRIX.md`.
 - **Docker** for developer firmware builds and the standalone add-on test
   environment. Firmware compilation initiated inside the add-on runs in its
   container and bootstraps a local ESPHome virtual environment.
@@ -115,6 +116,9 @@ its retained runtime state and device-registry entry.
 `network_id` / `psk`, and the bridge's `api_key`. Generate a real PSK with
 `openssl rand -hex 32` and keep it identical on the bridge and every node — it is
 resolved at compile time, so changing it requires reflashing the nodes.
+
+The full key reference, including defaults and the surrounding blocks each
+component needs, is in `docs/CONFIGURATION.md`.
 
 ```yaml
 esp_tree_bridge:
@@ -226,7 +230,6 @@ from the job history.
 ```bash
 ./device_code/scripts/ha_compile.sh <demo> b       # build
 ./device_code/scripts/ha_compile.sh <demo> bf      # build then flash
-./device_code/scripts/ha_esplog_run.sh restart     # network log collector on :5555
 ./test/build.sh && ./test/start.sh                 # standalone add-on UI, no HA
 cd ui && npm ci && npm run build
 ```
@@ -246,6 +249,13 @@ Live documentation in this repository:
 - `docs/esptree_radio_v3_spec.md` — the ESP-NOW protocol, including LR and
   regular mode (authoritative).
 - `docs/esptree_api_protobuf_spec.md` — protobuf/WebSocket API contract.
+- `docs/CONFIGURATION.md` — YAML configuration reference for the
+  `esp_tree_bridge:`, `esp_tree_remote:` and `espnow_82xx_remote:` keys, with
+  defaults and the surrounding blocks each one needs.
+- `docs/BOARD_MATRIX.md` — which chips the add-on accepts, which boards each
+  wizard offers, and which are usable as a bridge versus a remote.
+- `docs/TROUBLESHOOTING.md` — failure modes this project has exhibited, with
+  symptoms and fixes, plus an FAQ.
 - `docs/ESP_guide_usblog.md` — direct USB serial logging.
 - `docs/ESP_standalone.md` — ESP-IDF (non-ESPHome) remote implementation.
 - `docs/internal/serial_bridge_manual_test_checklist.md` — QA checklist for the
@@ -272,9 +282,12 @@ Licensed **AGPL-3.0-only** (see `LICENSE`).
 
 Known release-readiness gaps:
 
-- No dedicated troubleshooting or FAQ document.
-- No board / chip compatibility matrix.
-- Incomplete YAML configuration reference for `esp_tree_bridge:` / `esp_tree_remote:`.
 - No documented walkthrough for a first real sensor.
+- ESP8266 *bridge* firmware is not covered: the add-on registers `ESP8266` as a
+  board, but no ESP8266 bridge demo exists and the wizard does not offer the chip
+  for a bridge. Whether `esp_tree_bridge` compiles for ESP8266 is undetermined
+  here; see `docs/BOARD_MATRIX.md`.
+- ESP32-C61 and ESP32-P4 are accepted by name but built as C5 and S3 respectively,
+  and no hardware for either is referenced in this repository.
 - `CHANGELOG.md` last has a released entry for 0.1.38; later releases are not
   itemised there — `git log` is authoritative for the versions since.

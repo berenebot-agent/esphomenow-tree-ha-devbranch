@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/counter_test.dir/link.d CMakeFiles/counter_test.dir/counter_test.cpp.o -o counter_test
