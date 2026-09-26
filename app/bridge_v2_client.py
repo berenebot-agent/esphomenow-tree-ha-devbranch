@@ -15,7 +15,7 @@ import websockets
 from google.protobuf.message import DecodeError
 
 import json
-from .bridge_constants import API_VERSION, BACKOFF_DELAYS, CLIENT_KIND, ConnectionHandler, FrameHandler, PROTOCOL
+from .bridge_constants import API_VERSION, BACKOFF_DELAYS, CLIENT_KIND, ConnectionHandler, FrameHandler, PLACEHOLDER_MAC, PROTOCOL
 from .bridge_serial_client import SerialBridgeClient
 from .models import BridgeTarget, normalize_mac, now_ts
 from .protobuf.generated import esp_tree_runtime_pb2 as pb
@@ -847,6 +847,20 @@ class BridgeV2Manager:
                     client.bridge_uuid,
                     network_id=snapshot.bridge.network_id,
                     last_connected_at=now_ts(),
+                )
+            )
+            # The flash wizard creates the bridge with the synthetic PLACEHOLDER_MAC
+            # because the real MAC is unknown at that point. The WiFi path migrates
+            # it in _try_auto_activate_provisioned_bridge(), but the serial path
+            # activates without ever learning a MAC there, so the placeholder device
+            # row survived and the topology showed two rows named after the bridge:
+            # one at the placeholder and one at the real address. This is the moment
+            # the real MAC first becomes known on either transport, so migrate here.
+            asyncio.ensure_future(
+                asyncio.to_thread(
+                    self._db.rename_device_mac,
+                    PLACEHOLDER_MAC,
+                    bridge_mac,
                 )
             )
         self._snapshots[client.bridge_uuid] = snapshot

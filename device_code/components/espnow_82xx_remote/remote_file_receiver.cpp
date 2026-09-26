@@ -227,6 +227,13 @@ bool FileReceiver::handle_announce_(const espnow_file_announce_t &announce) {
     return false;
   }
 
+  // ANNOUNCED is transient and never observable from loop(): this handler and loop()
+  // both run on the ESPHome main loop, so no loop() iteration can occur between the
+  // assignment above and this one. The ANNOUNCED-timeout branch in loop() is
+  // therefore unreachable, and RECEIVING's radio-silence timeout is the guard that
+  // actually covers "announce accepted but no data arrives". The state is kept (and
+  // reset_() still unwinds it) so a failed accept-send leaves the receiver in a
+  // non-IDLE state until reset_() runs.
   state_ = State::RECEIVING;
   ESP_LOGI(TAG, "Accepted FILE_TRANSFER action=0x%02X size=%u chunk=%u",
            static_cast<unsigned>(action_), static_cast<unsigned>(file_size_),

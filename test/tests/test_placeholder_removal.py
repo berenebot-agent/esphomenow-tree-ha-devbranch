@@ -44,10 +44,19 @@ def _remove_remote_body(src: str) -> str:
 
 
 def test_placeholders_are_defined():
-    """The two synthetic MACs must exist; the fix keys off them."""
+    """The two synthetic MACs must exist; the fix keys off them.
+
+    They live in bridge_constants because the bridge client needs PLACEHOLDER_MAC
+    too: it migrates the placeholder device row once a snapshot reveals the real
+    bridge MAC. server.py imports both.
+    """
+    consts = (SERVER.parent / "bridge_constants.py").read_text()
+    assert 'PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FF"' in consts
+    assert 'REMOTE_PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FE"' in consts
     src = SERVER.read_text()
-    assert 'PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FF"' in src
-    assert 'REMOTE_PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FE"' in src
+    assert "PLACEHOLDER_MAC" in src and "REMOTE_PLACEHOLDER_MAC" in src, (
+        "server.py must still import the placeholder MACs"
+    )
 
 
 def test_remove_remote_handles_placeholders_before_the_topology_guard(server_src: str):

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from google.protobuf.message import DecodeError
 
-from .bridge_constants import API_VERSION, CLIENT_KIND, PROTOCOL
+from .bridge_constants import API_VERSION, CLIENT_KIND, PLACEHOLDER_MAC, PROTOCOL, REMOTE_PLACEHOLDER_MAC
 from .bridge_v2_client import BridgeV2Manager
 from .network_discovery import NetworkDiscovery
 from .compile_store import CompileStore
@@ -1687,11 +1687,9 @@ def create_app() -> FastAPI:
         result = await compiler.detect_chip_on_port(body.port, body.before)
         return result
 
-    PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FF"
-    # Remotes need their own synthetic key. Sharing PLACEHOLDER_MAC would collide
-    # with the in-flight bridge's device row (mac is the devices primary key), so a
-    # remote compile would overwrite the bridge's row and vice versa.
-    REMOTE_PLACEHOLDER_MAC = "FF:FF:FF:FF:FF:FE"
+    # PLACEHOLDER_MAC / REMOTE_PLACEHOLDER_MAC now live in bridge_constants, because
+    # the bridge client needs PLACEHOLDER_MAC too to migrate the placeholder device
+    # row once the real MAC is known.
 
     @app.post("/api/bridge/flash-wizard/submit")
     async def flash_wizard_submit(body: FlashWizardSubmitRequest) -> dict[str, Any]:
