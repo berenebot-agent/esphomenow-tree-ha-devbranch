@@ -147,6 +147,22 @@ def test_addon_supervisor_websocket_call_retries_during_ha_startup() -> None:
     assert "asyncio.sleep(delay)" in src, "retries need a backoff delay"
 
 
+def test_supervisor_websocket_is_closed_on_every_path() -> None:
+    """ha_ws_call must close its socket on success too.
+
+    Regression: adding the connect retry replaced `async with websockets.connect(...)`
+    with a bare connect, so a successful call returned without closing -- leaked
+    connections then made fresh handshakes hang
+    ("TimeoutError: timed out during opening handshake", ~28s = all retries).
+    The command loop must sit in a try/finally that closes.
+    """
+    src = (APP / "server.py").read_text(encoding="utf-8")
+    start = src.index("async def ha_ws_call(")
+    body = src[start : src.index("async def restart_home_assistant(", start)]
+    assert "finally:" in body, "ha_ws_call must close its socket in a finally block"
+    assert "await ws.close()" in body, "ha_ws_call must close the websocket it opened"
+
+
 def test_no_benign_conditions_logged_at_error() -> None:
     """Normal outcomes must not be logged at ERROR.
 

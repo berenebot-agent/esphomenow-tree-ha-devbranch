@@ -668,14 +668,21 @@ def create_app() -> FastAPI:
             raise last_exc or RuntimeError("supervisor websocket unavailable")
 
         await ws.send(json.dumps({"id": 1, **command}))
-        while True:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
-            if msg.get("id") != 1:
-                continue
-            if not msg.get("success", False):
-                error = msg.get("error") or {}
-                raise RuntimeError(error.get("message") or error.get("code") or "Home Assistant command failed")
-            return msg
+        # Everything after a successful connect must run inside try/finally: dropping
+        # the previous `async with` to add the retry meant a successful call never
+        # closed its socket, and the leaked connections made later handshakes hang
+        # ("TimeoutError: timed out during opening handshake").
+        try:
+            while True:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+                if msg.get("id") != 1:
+                    continue
+                if not msg.get("success", False):
+                    error = msg.get("error") or {}
+                    raise RuntimeError(error.get("message") or error.get("code") or "Home Assistant command failed")
+                return msg
+        finally:
+            await ws.close()
 
     async def restart_home_assistant() -> dict[str, Any]:
         if not settings.supervisor_token:
