@@ -9,7 +9,7 @@
   "requirements": [
     "protobuf>=6.31.1,<7"
   ],
-  "version": "0.2.232",
+  "version": "0.2.233",
   "dependencies": [
     "repairs"
   ]
