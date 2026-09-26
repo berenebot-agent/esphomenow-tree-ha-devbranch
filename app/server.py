@@ -2373,6 +2373,25 @@ def create_app() -> FastAPI:
         """
         target_mac = validate_mac_or_400(mac)
 
+        # Synthetic wizard placeholders are not real remotes and never appear in the
+        # bridge or retained topology -- they live only as a device row registered by
+        # /api/bridge/flash-wizard/submit so the wizard can poll compile status before
+        # the device exists. The topology check below therefore cannot find them, so
+        # they were unreachable by any endpoint and stayed in the tree forever as a
+        # fake offline node (seen as a duplicate row for an already-flashed remote).
+        # Clear those here instead of 404ing.
+        if target_mac in {PLACEHOLDER_MAC, REMOTE_PLACEHOLDER_MAC}:
+            removed = db.delete_device(target_mac)
+            db.unhide_device(target_mac)
+            logger.info("remove_remote: cleared synthetic placeholder %s (existed=%s)", target_mac, removed)
+            return {
+                "mac": target_mac,
+                "removed": bool(removed),
+                "integration": False,
+                "synthetic": True,
+                "warnings": [],
+            }
+
         # The database is the authoritative bridge inventory. Never rely on the
         # live topology to protect bridge records: it may be unavailable precisely
         # when a bridge is offline.
