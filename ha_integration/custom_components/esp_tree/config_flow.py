@@ -7,6 +7,7 @@ from pathlib import Path
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 
 from .const import CONF_ADDON_URL, CONF_INTEGRATION_TOKEN, CONF_TYPE, DOMAIN, LOCAL_CONFIG_FILE, SHARED_CONFIG_PATH
@@ -18,15 +19,26 @@ def _clean_value(value: object) -> str:
     return str(value or "").strip()
 
 
-def read_shared_config() -> dict:
-    for path in (Path(__file__).with_name(LOCAL_CONFIG_FILE), Path(SHARED_CONFIG_PATH)):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if isinstance(data, dict):
-            return data
-    return {}
+async def read_shared_config(hass: HomeAssistant | None = None) -> dict:
+    """Read the add-on's shared config.
+
+    Reads off the event loop when a hass instance is supplied: HA flags the
+    read_text/open on /share/esp_tree/integration_config.json as blocking calls
+    inside the event loop. Callers in a sync context may omit hass.
+    """
+    def _read() -> dict:
+        for path in (Path(__file__).with_name(LOCAL_CONFIG_FILE), Path(SHARED_CONFIG_PATH)):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+        return {}
+
+    if hass is None:
+        return _read()
+    return await hass.async_add_executor_job(_read)
 
 
 def hub_data_from_config(*configs: dict | None) -> dict:
@@ -114,7 +126,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if has_connection_data(data):
                 return self.async_create_entry(title="ESP Tree", data=data)
             self._errors["base"] = "missing_addon_config"
-        config = read_shared_config()
+        config = await read_shared_config(self.hass)
         data = hub_data_from_config(config)
         if has_connection_data(data):
             return self.async_create_entry(title="ESP Tree", data=data)
@@ -130,7 +142,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_import(self, import_info: dict | None = None) -> ConfigFlowResult:
-        data = hub_data_from_config(read_shared_config(), import_info or {})
+        data = hub_data_from_config(await read_shared_config(self.hass), import_info or {})
         existing = self._hub_entry()
         if existing:
             if has_connection_data(data):
@@ -151,7 +163,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_hassio(self, info: dict) -> ConfigFlowResult:
         _LOGGER.debug("async_step_hassio received info: %s", info)
         config = info.get("config") if isinstance(info.get("config"), dict) else info
-        shared_config = read_shared_config()
+        shared_config = await read_shared_config(self.hass)
         _LOGGER.debug("shared_config contents: %s", shared_config)
         data = hub_data_from_config(shared_config, config)
         _LOGGER.debug("hub_data_from_config result: %s", data)

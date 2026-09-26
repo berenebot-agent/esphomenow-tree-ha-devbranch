@@ -59,25 +59,33 @@ def _remove_hub_owned_remote_devices(hass: HomeAssistant, hub_entry_id: str, run
         if entry.data.get(CONF_TYPE) == "remote"
     }
     registry = dr.async_get(hass)
-    for device in list(registry.devices.values()):
-        if hub_entry_id not in device.config_entries:
-            continue
+    # Iterate the registry's entries rather than the deprecated `devices` mapping
+    # (HA deprecates mapping/lookup access to `device_registry.devices` from
+    # 2027.9.0). async_entries_for_config_entry returns the hub's devices directly.
+    for device in dr.async_entries_for_config_entry(registry, hub_entry_id):
         if device.config_entries.intersection(remote_entry_ids):
             continue
         if device.identifiers.intersection(remote_ids):
             registry.async_remove_device(device.id)
 
 
-def _write_runtime_status() -> None:
+async def _write_runtime_status(hass: HomeAssistant) -> None:
     runtime_path = Path(SHARED_RUNTIME_PATH)
     payload = {
         "version": INTEGRATION_VERSION,
         "module_imported_at": _MODULE_IMPORTED_AT,
         "written_at": int(time.time()),
     }
-    try:
+    # Off the event loop: HA flags write_text/open here as blocking calls
+    # ("Detected blocking call to write_text with args (PosixPath('/share/esp_tree/
+    # integration_runtime.json'), ...) inside the event loop"). The add-on reads
+    # this file to report runtime_loaded, so it must still be written.
+    def _write() -> None:
         runtime_path.parent.mkdir(parents=True, exist_ok=True)
         runtime_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        await hass.async_add_executor_job(_write)
     except OSError as exc:
         _LOGGER.debug("Could not write ESP Tree runtime status: %s", exc)
 
@@ -89,8 +97,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     from .config_flow import has_connection_data, hub_data_from_config, read_shared_config
 
     await _migrate_legacy_entries(hass)
-    _write_runtime_status()
-    shared_config = read_shared_config()
+    await _write_runtime_status(hass)
+    shared_config = await read_shared_config(hass)
     hub_entries = [
         entry
         for entry in hass.config_entries.async_entries(DOMAIN)
@@ -115,11 +123,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             _LOGGER.debug("Could not dismiss ESP Tree restart notification: %s", exc)
 
     async def _cleanup_restart_marker() -> None:
+        # These are all normal outcomes, not errors: no marker means nothing to
+        # clean up, and hass running / no hub entries means skip. Logged at ERROR
+        # they made a healthy restart look broken and trained readers to ignore
+        # ERROR in this log.
         if hass.is_running:
-            _LOGGER.error("RESTART_CLEANUP: hass is running, skipping cleanup")
+            _LOGGER.debug("RESTART_CLEANUP: hass is running, skipping cleanup")
             return
         if not hub_entries:
-            _LOGGER.error("RESTART_CLEANUP: no hub entries, skipping cleanup")
+            _LOGGER.debug("RESTART_CLEANUP: no hub entries, skipping cleanup")
             return
         marker_path = Path(__file__).resolve().parent / ".restart_required.json"
         if marker_path.exists():
@@ -128,15 +140,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             except Exception:
                 created_at = 0
             if created_at > _MODULE_IMPORTED_AT:
-                _LOGGER.error("RESTART_CLEANUP: marker is fresh (created_at=%s > MODULE_IMPORTED_AT=%s), keeping", created_at, _MODULE_IMPORTED_AT)
+                _LOGGER.info("RESTART_CLEANUP: marker is fresh (created_at=%s > MODULE_IMPORTED_AT=%s), keeping", created_at, _MODULE_IMPORTED_AT)
                 return
-            _LOGGER.error("RESTART_CLEANUP: marker is stale, DELETING at %s", marker_path)
+            _LOGGER.info("RESTART_CLEANUP: marker is stale, DELETING at %s", marker_path)
             try:
                 marker_path.unlink()
             except OSError:
                 pass
         else:
-            _LOGGER.error("RESTART_CLEANUP: no marker found at %s", marker_path)
+            _LOGGER.debug("RESTART_CLEANUP: no marker found at %s", marker_path)
 
     hass.async_create_task(_dismiss_restart_notification())
     await _cleanup_restart_marker()
@@ -180,7 +192,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         area_id = entry.data.get("area_id")
         if area_id and remote_mac:
             registry = dr.async_get(hass)
-            device = registry.async_get_device(identifiers={(DOMAIN, remote_mac)})
+            device = registry.async_get_device_by_identifier((DOMAIN, remote_mac), entry.entry_id)
             if device:
                 registry.async_update_device(device.id, area_id=area_id)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -229,7 +241,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if runtime:
         await runtime.forget_remote(remote_mac)
     registry = dr.async_get(hass)
-    device = registry.async_get_device(identifiers={(DOMAIN, remote_mac)})
+    device = registry.async_get_device_by_identifier((DOMAIN, remote_mac), entry.entry_id)
     if device:
         registry.async_remove_device(device.id)
 
@@ -260,15 +272,18 @@ async def cleanup_integration(hass: HomeAssistant, *, remove_hub: bool = False) 
 
     registry = dr.async_get(hass)
     remaining_entry_ids = {entry.entry_id for entry in hass.config_entries.async_entries(DOMAIN)}
-    for device in list(registry.devices.values()):
-        if device.identifiers.intersection(remote_identifiers):
-            registry.async_remove_device(device.id)
-            continue
-        if not device.config_entries.intersection(remaining_entry_ids):
-            for ident in device.identifiers:
-                if ident[0] == DOMAIN:
-                    registry.async_remove_device(device.id)
-                    break
+    # Iterate config entries' devices rather than the deprecated registry.devices
+    # mapping (stops working in HA 2027.9.0).
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+            if device.identifiers.intersection(remote_identifiers):
+                registry.async_remove_device(device.id)
+                continue
+            if not device.config_entries.intersection(remaining_entry_ids):
+                for ident in device.identifiers:
+                    if ident[0] == DOMAIN:
+                        registry.async_remove_device(device.id)
+                        break
 
     await runtime.store.clear()
     if runtime.client:

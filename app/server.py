@@ -620,26 +620,62 @@ def create_app() -> FastAPI:
     def control_manager() -> Any | None:
         return bridge_manager
 
+    async def _supervisor_ws_connect(websockets_mod: Any, timeout: float) -> Any:
+        """Open the supervisor's core websocket and complete the auth handshake.
+
+        Split out so ha_ws_call can retry just this step: while Home Assistant is
+        starting, its websocket API rejects the upgrade.
+        """
+        ws = await websockets_mod.connect(
+            "ws://supervisor/core/websocket", open_timeout=timeout, close_timeout=2
+        )
+        await asyncio.wait_for(ws.recv(), timeout=timeout)
+        await ws.send(json.dumps({"type": "auth", "access_token": settings.supervisor_token}))
+        auth = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+        if auth.get("type") != "auth_ok":
+            raise RuntimeError("HA auth failed")
+        return ws
+
     async def ha_ws_call(command: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
         if not settings.supervisor_token:
             raise RuntimeError("SUPERVISOR_TOKEN not available")
         import websockets
 
-        async with websockets.connect("ws://supervisor/core/websocket", open_timeout=timeout, close_timeout=2) as ws:
-            await asyncio.wait_for(ws.recv(), timeout=timeout)
-            await ws.send(json.dumps({"type": "auth", "access_token": settings.supervisor_token}))
-            auth = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
-            if auth.get("type") != "auth_ok":
-                raise RuntimeError("HA auth failed")
-            await ws.send(json.dumps({"id": 1, **command}))
-            while True:
-                msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
-                if msg.get("id") != 1:
-                    continue
-                if not msg.get("success", False):
-                    error = msg.get("error") or {}
-                    raise RuntimeError(error.get("message") or error.get("code") or "Home Assistant command failed")
-                return msg
+        # Retry the connect+auth step only. While Home Assistant is starting (just
+        # after a restart, or during its own 300s-bounded bootstrap) its websocket
+        # API rejects the upgrade, and a single attempt failed hard with
+        # "InvalidStatus: server rejected WebSocket connection". Observed only in
+        # that window: 10/10 calls failed mid-startup, 12/12 succeeded once HA was
+        # up. Retrying makes these calls survive the window instead of failing.
+        # The command itself is NOT retried -- it may not be idempotent.
+        attempts = 4
+        last_exc: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                ws = await _supervisor_ws_connect(websockets, timeout)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt == attempts:
+                    raise
+                delay = min(2 ** (attempt - 1), 5)
+                logger.info(
+                    "supervisor websocket not ready (attempt %d/%d): %s -- retrying in %ss",
+                    attempt, attempts, exc, delay,
+                )
+                await asyncio.sleep(delay)
+        else:  # pragma: no cover - the loop either breaks or raises
+            raise last_exc or RuntimeError("supervisor websocket unavailable")
+
+        await ws.send(json.dumps({"id": 1, **command}))
+        while True:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+            if msg.get("id") != 1:
+                continue
+            if not msg.get("success", False):
+                error = msg.get("error") or {}
+                raise RuntimeError(error.get("message") or error.get("code") or "Home Assistant command failed")
+            return msg
 
     async def restart_home_assistant() -> dict[str, Any]:
         if not settings.supervisor_token:

@@ -66,7 +66,15 @@ class IntegrationWSClient:
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession()
-        self._task = self.hass.async_create_task(self._run(), name="esp_tree_addon_ws")
+        # A background task, NOT hass.async_create_task: this is a reconnect loop
+        # that lives for the lifetime of the integration. A regular task is tracked
+        # by Home Assistant, so async_block_till_done() waits on it and it never
+        # finishes -- HA logged "Setup timed out for bootstrap waiting on
+        # {<Task pending name='esp_tree_addon_ws'>}" and held its own startup for
+        # the full 300s bootstrap timeout on every restart.
+        self._task = self.hass.async_create_background_task(
+            self._run(), name="esp_tree_addon_ws"
+        )
 
     async def stop(self) -> None:
         if self._task:

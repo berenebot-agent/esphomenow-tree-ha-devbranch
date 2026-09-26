@@ -20,7 +20,8 @@ async def test_forget_remote_clears_runtime_and_registry_even_with_config_entry(
     hass.config_entries.async_entry_for_domain_unique_id.return_value = entry
     hass.config_entries.async_entry_for_domain_unique_id.side_effect = [entry, None]
     registry = MagicMock()
-    registry.async_get_device.return_value = MagicMock(id="device-id")
+    # async_get_devices, not the deprecated async_get_device(identifiers=...)
+    registry.async_get_devices.return_value = [MagicMock(id="device-id")]
     monkeypatch.setattr(services.dr, "async_get", MagicMock(return_value=registry))
 
     services.async_setup_services(hass)

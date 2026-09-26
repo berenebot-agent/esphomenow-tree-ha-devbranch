@@ -41,7 +41,9 @@ class EspTreeEntity(Entity):
             sw_version=(remote.project_version if remote else None),
         )
         if remote and remote.bridge_mac:
-            info["via_device"] = (DOMAIN, norm_mac(remote.bridge_mac))
+            # via_device_id, not the deprecated via_device identifier tuple (HA
+            # deprecates via_device from 2027.8.0).
+            info["via_device_id"] = runtime.parent_device_id(remote.bridge_mac)
         return info
 
     @property
