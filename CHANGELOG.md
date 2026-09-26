@@ -8,6 +8,26 @@ Future releases should add an entry here.
 
 ## Unreleased
 
+- **Browser USB flashing no longer asks for the device twice.** `esp-web-tools`' install
+  dialog calls `navigator.serial.requestPort()` itself, so the USB chooser appeared again
+  even when the wizard had just detected the chip over the same port. The detected port is
+  now passed straight into the dialog, so a board already granted needs no second prompt at
+  all. The flash step also reuses any port the browser has previously granted, and the
+  `esp-web-tools`/`esptool-js` bundles are now vendored through `npm` instead of being
+  fetched from `unpkg.com` at runtime (so browser flashing works without outbound internet
+  access, and the versions are pinned).
+- **Browser USB flashing no longer asks redundant questions.** The install manifests set
+  `new_install_prompt_erase: false` and `new_install_improv_wait_time: 0`: the erase decision
+  is already made by pressing Compile and Flash, and the firmware implements no Improv, so
+  the dialog's post-write Improv probe could only ever stall for its 10 s default before
+  continuing. Boards are still erased — the dialog erases by default when no erase prompt is
+  configured and the device reports no Improv.
+- **Bug fix — the Create Remote wizard advanced on an event that never fires.** It listened
+  for `esp-web-tools`' `state-changed` `FINISHED` event to move to the Home Assistant step,
+  but `esp-web-tools@10`'s dialog never dispatches `state-changed`; the event belongs to the
+  Improv serial client. The wizard only appeared to work because of a manual "I've flashed
+  it" button beside it, which is now removed in favour of watching the dialog's real state
+  (with a manual continue offered if the dialog is dismissed before that completes).
 - **Licensed AGPL-3.0-only.** Added the top-level `LICENSE` file. Previously the
   repository had no licence, which meant no one was permitted to use, modify or
   redistribute it.

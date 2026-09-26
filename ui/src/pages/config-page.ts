@@ -4,23 +4,13 @@ import '../components/config-editor';
 import '../components/compile-log-viewer';
 import { hasEspTreeExternalComponents } from '../components/config-editor';
 import { api, CompileStatusResponse, DeviceConfig, normalizeMac, PreflightComparison } from '../api/client';
+import { chipFamilyFromName, openInstallDialog, usbFlashSupported } from '../lib/browser-flash';
 
 type PageState = 'loading' | 'no_config' | 'editor';
 type CompilePhase = 'idle' | 'compile_queued' | 'compiling' | 'compiled' | 'failed' | 'queued_for_flash';
 type FlashIntent = 'none' | 'ota' | 'browser';
 const FLASH_STATUSES = new Set(['queued', 'starting', 'announcing', 'transferring', 'verifying', 'transfer_success_waiting_rejoin']);
 const FLASH_TERMINAL_STATUSES = new Set(['success', 'failed', 'aborted', 'rejoin_timeout', 'version_mismatch']);
-
-function chipNameToFamily(chipName: string): string | null {
-  const normalized = chipName.trim().toUpperCase().replace(/\s+/g, '');
-  if (!normalized) return null;
-  const families = ['ESP8266', 'ESP32-C61', 'ESP32-C6', 'ESP32-C5', 'ESP32-C3', 'ESP32-C2', 'ESP32-H2', 'ESP32-P4', 'ESP32-S3', 'ESP32-S2', 'ESP32'];
-  for (const family of families) {
-    const compact = family.replace(/-/g, '');
-    if (normalized.includes(family) || normalized.includes(compact)) return family;
-  }
-  return null;
-}
 
 function chipFamilyFromYaml(yaml: string): string | null {
   const text = yaml || '';
@@ -67,6 +57,8 @@ export class EspConfigPage extends LitElement {
   @state() private compileStartedAt: number | null = null;
   @state() private flashIntent: FlashIntent = 'none';
   @state() private browserFlashManifestUrl = '';
+  @state() private browserFlashError = '';
+  @state() private browserFlashOpen = false;
   private browserFlashFirmwareBlobUrl = '';
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   @query('esp-compile-log-viewer') private compileLogViewer!: HTMLElement | null;
@@ -128,12 +120,12 @@ export class EspConfigPage extends LitElement {
   }
 
   private get browserSupportsUsbFlash(): boolean {
-    return typeof window !== 'undefined' && window.isSecureContext && 'serial' in navigator;
+    return usbFlashSupported();
   }
 
   private get browserFlashChipFamily(): string | null {
     const chipName = String(this.preflight?.chip.new || this.device?.chip_name || '');
-    return chipNameToFamily(chipName) || chipFamilyFromYaml(this.editorContent);
+    return chipFamilyFromYaml(this.editorContent) || chipFamilyFromName(chipName);
   }
 
   private getElapsedTime(): string {
@@ -211,7 +203,15 @@ export class EspConfigPage extends LitElement {
       const manifest = {
         name: String(this.device?.esphome_name || this.device?.label || this.mac),
         version: String(this.device?.project_version || this.device?.firmware_version || 'compiled'),
-        new_install_prompt_erase: true,
+        // No erase prompt: this is a factory image reflashed from the device's own
+        // page, and the dialog's "Erase device?" step is a second question for a
+        // decision the user already made by pressing Compile and Flash. The dialog
+        // erases without asking when this is false and the device has no Improv.
+        new_install_prompt_erase: false,
+        // The firmware implements no Improv (no `improv_serial:` anywhere in
+        // device_code/), so the dialog's post-write Improv probe can only ever time
+        // out. 0 skips it instead of stalling for the 10 s default.
+        new_install_improv_wait_time: 0,
         builds: [
           {
             chipFamily,
@@ -510,6 +510,35 @@ export class EspConfigPage extends LitElement {
     await this.queueCompile(false);
   }
 
+  /**
+   * Open the install dialog against this page's compiled factory image.
+   *
+   * Called from a click so the requestPort() fallback still has its user activation;
+   * when the chip was already detected earlier in the session the port is passed
+   * straight in and the browser shows no second chooser.
+   */
+  private async openBrowserFlash(): Promise<void> {
+    if (!this.browserFlashManifestUrl) return;
+    this.browserFlashError = '';
+    try {
+      const result = await openInstallDialog({
+        manifestUrl: this.browserFlashManifestUrl,
+        onClosed: () => this.onBrowserFlashClosed(),
+      });
+      if (result === 'cancelled') {
+        this.browserFlashError = 'No USB device was selected.';
+        return;
+      }
+      this.browserFlashOpen = true;
+    } catch (err) {
+      this.browserFlashError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  private onBrowserFlashClosed(): void {
+    this.browserFlashOpen = false;
+  }
+
   private async cancelCompile(): Promise<void> {
     try {
       await api.cancelCompile(this.mac);
@@ -698,13 +727,18 @@ export class EspConfigPage extends LitElement {
                     ${showBrowserFlashInstall
                       ? html`
                           <div class="browser-flash-actions">
-                            <esp-web-install-button manifest=${this.browserFlashManifestUrl}>
-                              <button slot="activate" class="btn btn-primary">Flash via Browser USB</button>
-                              <span slot="unsupported">Open this page in Chrome or Edge over HTTPS to use browser USB flashing.</span>
-                              <span slot="not-allowed">Browser USB flashing requires a secure HTTPS page.</span>
-                            </esp-web-install-button>
+                            <button
+                              class="btn btn-primary"
+                              ?disabled=${this.browserFlashOpen}
+                              @click=${this.openBrowserFlash}
+                            >
+                              ${this.browserFlashOpen ? 'Flashing…' : 'Flash via Browser USB'}
+                            </button>
                             <a class="btn" href=${api.downloadFactoryBinary(this.mac)} download>Download factory .bin</a>
                           </div>
+                          ${this.browserFlashError
+                            ? html`<p class="browser-flash-error">${this.browserFlashError}</p>`
+                            : nothing}
                         `
                       : html`
                           <div class="browser-flash-hint">
@@ -1094,8 +1128,10 @@ export class EspConfigPage extends LitElement {
       font-size: 12px;
       color: var(--muted);
     }
-    esp-web-install-button::part(button) {
-      font: inherit;
+    .browser-flash-error {
+      margin: 6px 0 0;
+      font-size: 12px;
+      color: var(--danger, #dc2626);
     }
     .warnings {
       border-left: 4px solid var(--accent);

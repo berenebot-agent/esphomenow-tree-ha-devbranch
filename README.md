@@ -57,9 +57,9 @@ See `CONTRIBUTING.md` for the per-domain entry points.
 - **Docker** for developer firmware builds and the standalone add-on test
   environment. Firmware compilation initiated inside the add-on runs in its
   container and bootstraps a local ESPHome virtual environment.
-- **Chrome or Edge over HTTPS** for browser-based USB flashing. The UI loads
-  `esp-web-tools` and `esptool-js` from `unpkg.com`, so those workflows also
-  require outbound internet access.
+- **Chrome or Edge over HTTPS** for browser-based USB flashing. `esp-web-tools`
+  and `esptool-js` are bundled with the UI, so browser flashing needs no outbound
+  internet access beyond loading the add-on itself.
 
 ## Install the add-on
 

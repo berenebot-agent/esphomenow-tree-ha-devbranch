@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ChipInfo, api, normalizeMac } from '../api/client';
 import '../components/compile-log-viewer';
+import { acquirePort, openInstallDialog, detectChip as detectConnectedChip, usbFlashSupported } from '../lib/browser-flash';
 
 /**
  * Create Remote wizard.
@@ -48,6 +49,21 @@ export class EspRemoteWizard extends LitElement {
   @state() private firmwareBlobUrl = '';
   @state() private preparingManifest = false;
   @state() private usbSupported = true;
+  @state() private flashError = '';
+  @state() private flashing = false;
+  /**
+   * Set when the dialog is closed without first confirming completion.
+   *
+   * A successful write still shows the dialog's "Next" button, and the user may close out
+   * instead of pressing it — so the automatic advance can be missed. In that one case we
+   * surface a manual continue rather than leaving the wizard stuck.
+   */
+  @state() private flashNeedsConfirm = false;
+  /**
+   * A port the browser has already granted (from the detect step). Passing it to the
+   * install dialog is what removes the browser's second device chooser.
+   */
+  private browserFlashPort: SerialPort | null = null;
 
   /**
    * Post-flash Home Assistant integration status.
@@ -90,43 +106,33 @@ export class EspRemoteWizard extends LitElement {
   }
 
   private detectUsbSupport(): boolean {
-    const nav = navigator as Navigator & { serial?: unknown };
-    return Boolean(nav.serial) && window.isSecureContext;
+    return usbFlashSupported();
   }
 
-  /** Detect the connected chip from this browser, where the USB device is plugged in. */
+  /**
+   * Detect the connected chip from this browser, where the USB device is plugged in.
+   *
+   * The granted port is kept (`browserFlashPort`) so the flash step needs no second
+   * chooser from the browser.
+   */
   private async detectChip(): Promise<void> {
     this.chipDetectionError = '';
     this.detectedChipName = '';
     this.detectingChip = true;
-    let transport: any = null;
 
     try {
       if (!this.detectUsbSupport()) {
         throw new Error('USB chip detection requires Chrome or Edge on a secure HTTPS page. You can select the chip manually instead.');
       }
-      const serial = (navigator as Navigator & {
-        serial?: { requestPort: () => Promise<unknown> };
-      }).serial;
-      if (!serial) throw new Error('Web Serial is not available. Select the chip manually instead.');
+      const port = await acquirePort();
+      if (port === 'cancelled') {
+        this.detectingChip = false;
+        return;
+      }
+      // Keep the granted port: the flash step reuses it instead of re-prompting.
+      this.browserFlashPort = port;
 
-      // requestPort must run directly from this click so the browser can show its USB picker.
-      const port = await serial.requestPort();
-      const moduleUrl = 'https://unpkg.com/esptool-js@0.6.1/bundle.js';
-      const esptool = await import(/* @vite-ignore */ moduleUrl);
-      transport = new esptool.Transport(port, true);
-      const loader = new esptool.ESPLoader({
-        transport,
-        baudrate: 115200,
-        terminal: { clean: () => {}, writeLine: () => {}, write: () => {} },
-        debugLogging: false,
-      });
-      const detected = String(await loader.main());
-      const normalized = detected.trim().toUpperCase().replace(/\s+/g, '');
-      const families = ['ESP32-C61', 'ESP32-C6', 'ESP32-C5', 'ESP32-C3', 'ESP32-C2', 'ESP32-H2', 'ESP32-P4', 'ESP32-S3', 'ESP32-S2', 'ESP32'];
-      const family = families.find((candidate) =>
-        normalized.includes(candidate) || normalized.includes(candidate.replace(/-/g, '')),
-      );
+      const { detected, family } = await detectConnectedChip(port);
       const supportedChip = family && this.chips.find((chip) => chip.chip_name.toUpperCase() === family);
       if (!family || !supportedChip) {
         throw new Error(`Detected ${detected}, but this chip is not in the supported firmware list. Choose a supported chip manually.`);
@@ -136,13 +142,6 @@ export class EspRemoteWizard extends LitElement {
     } catch (err) {
       this.chipDetectionError = err instanceof Error ? err.message : String(err);
     } finally {
-      if (transport) {
-        try {
-          await transport.disconnect();
-        } catch {
-          // Detection has completed; ignore errors while releasing the serial port.
-        }
-      }
       this.detectingChip = false;
     }
   }
@@ -339,7 +338,14 @@ export class EspRemoteWizard extends LitElement {
       const manifest = {
         name: this.esphomeName || this.name.trim(),
         version: 'compiled',
-        new_install_prompt_erase: true,
+        // No erase prompt: this is a factory image written to a blank device, and the
+        // decision was already made by pressing Compile. The dialog erases without asking
+        // when this is false and the device reports no Improv.
+        new_install_prompt_erase: false,
+        // The remote firmware implements no Improv (no `improv_serial:` anywhere in
+        // device_code/), so the dialog's post-write Improv probe can only ever time out.
+        // 0 skips it instead of stalling for the 10 s default.
+        new_install_improv_wait_time: 0,
         builds: [{ chipFamily, parts: [{ path: firmwareBlobUrl, offset: 0 }] }],
       };
       const manifestUrl = URL.createObjectURL(
@@ -355,7 +361,42 @@ export class EspRemoteWizard extends LitElement {
     }
   }
 
-  /** esp-web-tools has finished writing the firmware. */
+  /**
+   * Open the install dialog against the compiled remote firmware.
+   *
+   * Called from a click so the `requestPort()` fallback still has its user activation; when
+   * the chip was detected earlier in this wizard the held port is passed straight in and the
+   * browser shows no second chooser.
+   */
+  private async flashInBrowser(): Promise<void> {
+    if (!this.manifestUrl) return;
+    this.flashError = '';
+    this.flashing = true;
+    try {
+      const result = await openInstallDialog({
+        manifestUrl: this.manifestUrl,
+        port: this.browserFlashPort,
+        // Advances the wizard to the Home Assistant step as soon as the write completes,
+        // so no manual "I've flashed it" click is needed in the normal path.
+        onFinished: () => void this.onBrowserFlashDone(),
+        onClosed: () => {
+          // Closed without the automatic advance firing: the write may well have succeeded
+          // (successful writes wait for the dialog's own "Next"), so offer a manual continue
+          // rather than silently doing nothing.
+          if (this.stage !== 'done') this.flashNeedsConfirm = true;
+        },
+      });
+      if (result === 'cancelled') {
+        this.flashError = 'No USB device was selected.';
+      }
+    } catch (err) {
+      this.flashError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.flashing = false;
+    }
+  }
+
+  /** The install dialog has finished writing the firmware. */
   private async onBrowserFlashDone(): Promise<void> {
     this.clearPoll();
     try {
@@ -689,16 +730,23 @@ export class EspRemoteWizard extends LitElement {
                   : nothing}
                 ${this.manifestUrl
                   ? html`
-                      <esp-web-install-button manifest=${this.manifestUrl} @state-changed=${(e: Event) => {
-                        const detail = (e as CustomEvent<{ state: string }>).detail;
-                        if (detail?.state === 'FINISHED') void this.onBrowserFlashDone();
-                      }}>
-                        <button slot="activate" class="btn primary">Flash via Browser USB</button>
-                        <span slot="unsupported"
-                          >Open this page in Chrome or Edge over HTTPS to use browser USB flashing.</span
-                        >
-                        <span slot="not-allowed">Browser USB flashing requires a secure HTTPS page.</span>
-                      </esp-web-install-button>
+                      <div class="actions">
+                        <button class="btn primary" ?disabled=${this.flashing} @click=${() => void this.flashInBrowser()}>
+                          ${this.flashing ? 'Flashing…' : 'Flash via Browser USB'}
+                        </button>
+                      </div>
+                      ${this.flashError
+                        ? html`<div class="error">${this.flashError}</div>`
+                        : nothing}
+                      ${this.flashNeedsConfirm
+                        ? html`
+                            <div class="actions">
+                              <button class="btn primary" @click=${() => void this.onBrowserFlashDone()}>
+                                Continue to Home Assistant setup
+                              </button>
+                            </div>
+                          `
+                        : nothing}
                     `
                   : nothing}
                 ${!this.usbSupported
@@ -706,11 +754,6 @@ export class EspRemoteWizard extends LitElement {
                       This browser cannot flash over USB. Open the add-on in Chrome or Edge over HTTPS.
                     </div>`
                   : nothing}
-                <div class="actions">
-                  <button class="btn" @click=${() => void this.onBrowserFlashDone()}>
-                    I've flashed it
-                  </button>
-                </div>
                 <p class="hint">
                   The button above writes the firmware from this computer. If your browser cannot,
                   use the compiled .bin with your own tool, then continue.

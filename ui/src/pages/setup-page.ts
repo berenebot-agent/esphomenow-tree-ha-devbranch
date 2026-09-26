@@ -2,6 +2,14 @@ import { LitElement, PropertyValues, css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { load as loadYaml } from 'js-yaml';
 import { DiscoveredBridge, SerialPort, api } from '../api/client';
+import {
+  acquirePort,
+  chipFamilyFromName,
+  detectChip as detectConnectedChip,
+  openInstallDialog,
+  usbFlashSupported,
+  type UsbSerialPort,
+} from '../lib/browser-flash';
 
 const CHIP_OPTIONS: Record<string, { label: string; board_info: Record<string, string> }> = {
   'ESP32-C5': { label: 'ESP32-C5 (esp32-c5-devkitc-1)', board_info: { platform: 'esp32', board: 'esp32-c5-devkitc-1', framework: 'esp-idf', variant: 'esp32c5' } },
@@ -13,17 +21,6 @@ const CHIP_OPTIONS: Record<string, { label: string; board_info: Record<string, s
   'ESP32-H2': { label: 'ESP32-H2 (esp32-h2-devkitm-1)', board_info: { platform: 'esp32', board: 'esp32-h2-devkitm-1', framework: 'esp-idf', variant: 'esp32h2' } },
   'ESP32-C2': { label: 'ESP32-C2 (esp32-c2-devkitm-1)', board_info: { platform: 'esp32', board: 'esp32-c2-devkitm-1', framework: 'esp-idf', variant: 'esp32c2' } },
 };
-
-function chipNameToFamily(chipName: string | null): string | null {
-  if (!chipName) return null;
-  const normalized = chipName.trim().toUpperCase().replace(/\s+/g, '');
-  const families = ['ESP32-C61', 'ESP32-C6', 'ESP32-C5', 'ESP32-C3', 'ESP32-C2', 'ESP32-H2', 'ESP32-P4', 'ESP32-S3', 'ESP32-S2', 'ESP32'];
-  for (const family of families) {
-    const compact = family.replace(/-/g, '');
-    if (normalized.includes(family) || normalized.includes(compact)) return family;
-  }
-  return null;
-}
 
 type Step1State = 'disabled' | 'choose' | 'scanning' | 'found' | 'connecting' | 'pending' | 'complete' | 'error';
 type Step2State = 'disabled' | 'ready' | 'restarting' | 'polling' | 'complete' | 'error';
@@ -89,6 +86,13 @@ export class EspSetupWizard extends LitElement {
   @state() private flashBrowserDetecting = false;
   @state() private flashBrowserDetectError = '';
   @state() private flashDetectedChip = '';
+  /**
+   * A port the browser has already granted (from the detect step). Passing it to the
+   * install dialog is what removes the browser's second device chooser.
+   */
+  private flashBrowserPort: UsbSerialPort | null = null;
+  @state() private flashBrowserFlashing = false;
+  @state() private flashBrowserFlashError = '';
   @state() private flashSecretsWarning = '';
   @state() private flashConfigError = '';
   @state() private flashMac = '';
@@ -178,7 +182,7 @@ export class EspSetupWizard extends LitElement {
   }
 
   private get flashChipFamily(): string | null {
-    return chipNameToFamily(this.flashChipName);
+    return chipFamilyFromName(this.flashChipName);
   }
 
   private clearFlashBrowserManifestUrl(): void {
@@ -210,7 +214,14 @@ export class EspSetupWizard extends LitElement {
       const manifest = {
         name: this.flashName,
         version: 'compiled',
-        new_install_prompt_erase: true,
+        // No erase prompt: this is a factory image written to a blank device, and the
+        // decision was already made by pressing Compile. The dialog erases without asking
+        // when this is false and the device reports no Improv.
+        new_install_prompt_erase: false,
+        // The bridge firmware implements no Improv (no `improv_serial:` anywhere in
+        // device_code/), so the dialog's post-write Improv probe can only ever time out.
+        // 0 skips it instead of stalling for the 10 s default.
+        new_install_improv_wait_time: 0,
         builds: [
           {
             chipFamily,
@@ -717,34 +728,21 @@ export class EspSetupWizard extends LitElement {
     this.flashBrowserDetecting = true;
     this.flashBrowserDetectError = '';
     this.flashDetectedChip = '';
-    let transport: any = null;
 
     try {
-      if (typeof window === 'undefined' || !window.isSecureContext) {
-        throw new Error('Browser USB detection requires a secure HTTPS page');
-      }
-      const serial = (navigator as Navigator & { serial?: { requestPort: () => Promise<unknown> } }).serial;
-      if (!serial) {
-        throw new Error('Web Serial is not available. Use Chrome or Edge, or select the board manually');
+      if (!usbFlashSupported()) {
+        throw new Error('Browser USB detection requires a secure HTTPS page in Chrome or Edge');
       }
 
-      const port = await serial.requestPort();
-      const moduleUrl = 'https://unpkg.com/esptool-js@0.6.1/bundle.js';
-      const esptool = await import(/* @vite-ignore */ moduleUrl);
-      transport = new esptool.Transport(port, true);
-      const loader = new esptool.ESPLoader({
-        transport,
-        baudrate: 115200,
-        terminal: {
-          clean: () => {},
-          writeLine: () => {},
-          write: () => {},
-        },
-        debugLogging: false,
-      });
+      const port = await acquirePort();
+      if (port === 'cancelled') {
+        this.flashBrowserDetecting = false;
+        return;
+      }
+      // Keep the granted port: the flash step reuses it instead of re-prompting.
+      this.flashBrowserPort = port;
 
-      const detected = String(await loader.main());
-      const family = chipNameToFamily(detected);
+      const { detected, family } = await detectConnectedChip(port);
       if (!family || !CHIP_OPTIONS[family]) {
         throw new Error(`Detected ${detected}, but there is no supported board mapping for it`);
       }
@@ -755,13 +753,6 @@ export class EspSetupWizard extends LitElement {
     } catch (e) {
       this.flashBrowserDetectError = e instanceof Error ? e.message : String(e);
     } finally {
-      if (transport) {
-        try {
-          await transport.disconnect();
-        } catch {
-          // Ignore disconnect failures after detection.
-        }
-      }
       this.flashBrowserDetecting = false;
     }
   }
@@ -939,6 +930,35 @@ export class EspSetupWizard extends LitElement {
       }
     } catch {
       // transient; keep polling
+    }
+  }
+
+  /**
+   * Open the install dialog against this wizard's compiled factory image.
+   *
+   * Called from a click so the `requestPort()` fallback still has its user activation; when
+   * the board was detected earlier in this wizard the held port is passed straight in and
+   * the browser shows no second chooser.
+   */
+  private async flashInBrowser(): Promise<void> {
+    if (!this.flashBrowserManifestUrl) return;
+    this.flashBrowserFlashError = '';
+    this.flashBrowserFlashing = true;
+    try {
+      const result = await openInstallDialog({
+        manifestUrl: this.flashBrowserManifestUrl,
+        port: this.flashBrowserPort,
+        onClosed: () => {
+          this.flashBrowserFlashing = false;
+        },
+      });
+      if (result === 'cancelled') {
+        this.flashBrowserFlashError = 'No USB device was selected.';
+        this.flashBrowserFlashing = false;
+      }
+    } catch (e) {
+      this.flashBrowserFlashError = e instanceof Error ? e.message : String(e);
+      this.flashBrowserFlashing = false;
     }
   }
 
@@ -1545,11 +1565,15 @@ export class EspSetupWizard extends LitElement {
             <p class="muted">Firmware is ready. Connect ${this.flashName} to this computer by USB and flash it from this page.</p>
             <div class="flash-browser-actions">
               ${this.flashBrowserManifestUrl ? html`
-                <esp-web-install-button manifest=${this.flashBrowserManifestUrl}>
-                  <button slot="activate" class="btn btn-primary">Flash via Browser USB</button>
-                  <span slot="unsupported">Open this page in Chrome or Edge over HTTPS to use browser USB flashing.</span>
-                  <span slot="not-allowed">Browser USB flashing requires a secure HTTPS page.</span>
-                </esp-web-install-button>
+                <button class="btn btn-primary"
+                  @click=${() => void this.flashInBrowser()}
+                  ?disabled=${this.flashBrowserFlashing}>
+                  ${this.flashBrowserFlashing ? 'Flashing…' : 'Flash via Browser USB'}
+                </button>
+                ${this.flashBrowserPort ? html`
+                  <span class="chip-badge">Device already granted — no USB prompt needed.</span>
+                ` : ''}
+                ${this.flashBrowserFlashError ? html`<div class="flash-warning">${this.flashBrowserFlashError}</div>` : ''}
               ` : html`
                 <div class="flash-warning">
                   Browser USB flashing is not available for this build in the current tab. Download the factory binary and flash it with your preferred tool.
