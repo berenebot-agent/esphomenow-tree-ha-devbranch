@@ -271,7 +271,7 @@ class EspTreeRuntime:
                     data={**entry.data, "bridge_mac": bridge_mac},
                 )
                 self.hass.async_create_task(
-                    self.hass.config_entries.async_reload_entry(entry.entry_id)
+                    self.hass.config_entries.async_reload(entry.entry_id)
                 )
         self._notify_bridge(bridge_mac)
 
