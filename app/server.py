@@ -1116,7 +1116,14 @@ def create_app() -> FastAPI:
     async def auto_cleanup_legacy_state() -> None:
         marker_path = settings.data_dir / ".legacy_cleanup_done"
         legacy_dir = Path("/share/esp_tree")
-        if marker_path.exists() and not legacy_dir.exists():
+        # Either condition alone means there is nothing left to clean up: the
+        # marker means a previous run finished, and a missing directory means
+        # nothing to remove. Written as `and`, this guard only returned when BOTH
+        # held -- but the integration recreates /share/esp_tree on every HA start,
+        # so the directory was present on every add-on start, the guard fell
+        # through, and shutil.rmtree() destroyed a live shared directory (taking
+        # the integration's shared DB, activity log and config) on every update.
+        if marker_path.exists() or not legacy_dir.exists():
             return
         if settings.supervisor_token:
             try:
