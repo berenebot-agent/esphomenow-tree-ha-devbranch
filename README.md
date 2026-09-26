@@ -60,9 +60,6 @@ See `CONTRIBUTING.md` for the per-domain entry points and
 
 1. In Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ → Repositories**,
    and add `https://github.com/dellarb/esphomenow-tree-ha`.
-   > `repository.yaml` in this tree still advertises
-   > `https://github.com/dellarb/esp-tree-ha`, which does not resolve. Use the
-   > canonical repository URL above until that metadata is corrected.
 2. Install **ESP Tree**, start it, then open its panel from the sidebar
    (ingress) or **OPEN WEB UI** on the add-on page.
 
@@ -83,9 +80,10 @@ the HA base image.
    the `esp_tree` config flow and announces Supervisor discovery. If automatic
    setup is unavailable, the wizard links to **Devices & Services** for manual
    setup.
-3. **Confirm each remote.** When a remote joins, Home Assistant presents a
-   discovery confirmation and optional area assignment. The remote becomes a
-   device after that confirmation.
+3. **Confirm each remote.** When a remote joins, the add-on creates its Home
+   Assistant config entry and its device and entities appear automatically — no
+   confirmation prompt is required. An area can be assigned afterwards from the
+   device page.
 
 A new remote is flashed from the UI with the **Create Remote** wizard
 (`#/add-remote`): the add-on compiles the firmware, then esp-web-tools writes it
@@ -259,8 +257,20 @@ Core add-on, integration, WiFi-bridge and serial-bridge paths are implemented,
 but this is not yet a polished OSS release. The serial implementation still has
 a manual hardware-test matrix in `docs/ESP_roadmap_workplan_serial_bridge.md`;
 use the current manual checklist before claiming a tested transport matrix.
-Known release-readiness gaps include no `LICENSE`, no `.github/` templates or
-support-policy files, a last released changelog entry of 0.1.38, incomplete
-board/chip compatibility guidance, and no dedicated troubleshooting or FAQ
-document. `docs/roadmap_publish.md` contains useful background but is not a
-current open-items list.
+
+Licensed **AGPL-3.0-only** (see `LICENSE`).
+
+Known release-readiness gaps:
+
+- No dedicated troubleshooting or FAQ document.
+- No board / chip compatibility matrix.
+- Incomplete YAML configuration reference for `esp_tree_bridge:` / `esp_tree_remote:`.
+- No documented walkthrough for a first real sensor.
+- `CHANGELOG.md` last has a released entry for 0.1.38; later releases are not
+  itemised there.
+- `DOCS.md` is stale (see above) and is slated for removal.
+- `scripts/log_listener.py` and `scripts/esplog-master.py` are development
+  helpers that bind an unauthenticated HTTP port and are not intended for
+  production use; they need either hardening or removal before release.
+- `docs/roadmap_publish.md` contains useful background but is not a current
+  open-items list — verify each item against the tree.

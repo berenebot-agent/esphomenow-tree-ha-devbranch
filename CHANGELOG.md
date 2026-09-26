@@ -1,7 +1,27 @@
 # Changelog
 
+This file documents released behaviour. Entries were maintained only up to
+`0.1.38`; the add-on has since reached `0.1.309` and the intervening releases
+are not itemised here. Rather than backfill ~270 versions, the release history
+lives in `git log` — treat that as authoritative for what changed and when.
+Future releases should add an entry here.
+
 ## Unreleased
 
+- **Licensed AGPL-3.0-only.** Added the top-level `LICENSE` file. Previously the
+  repository had no licence, which meant no one was permitted to use, modify or
+  redistribute it.
+- **Corrected `repository.yaml`.** It advertised the development fork
+  (`berenebot-agent/esptree-dev`) as the add-on repository URL, which meant
+  users' add-on stores pointed at a development snapshot rather than the
+  canonical project. Now points at `dellarb/esphomenow-tree-ha`.
+- **CI now runs the full test suite.** It previously ran 4 add-on tests and 1
+  integration test out of ~180, so a change breaking any of the others merged
+  green. Both suites now run in full, mirroring `test/run-unit-tests.sh`.
+- **Documentation accuracy pass.** The README no longer claims HA presents a
+  discovery confirmation for new remotes (remotes are auto-added), no longer
+  carries a warning about a `repository.yaml` URL that has since been fixed, and
+  its release-readiness gap list reflects the current tree.
 - **Correction:** Native compilation is now implemented. The add-on bootstraps a local ESPHome venv (via `requirements-compile.txt`) and exposes `POST /api/devices/{mac}/compile`. The 0.1.38 note about "Native compilation not yet implemented" is obsolete — the compile button and compile queue are functional.
 
 ## 0.1.38
