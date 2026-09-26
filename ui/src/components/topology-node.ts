@@ -190,7 +190,19 @@ export class EspTopologyNode extends LitElement {
          bridge (which has no OTA/action cells) never aligned with a remote. The
          trailing widths fit the widest remote content: the Settings button, and
          the Edit YAML + Remove pair. */
-      grid-template-columns: 14px 10px minmax(180px, 1fr) minmax(0, 1fr) 120px 190px;
+      /* The metrics column must hold all four pills on ONE line, and the identity
+         column yields to it. It was minmax(0, 1fr), which lets the track collapse
+         to whatever is left over: at a 913px row that is ~245px, while four 76px
+         pills plus 3x6px gaps need ~322px. So the chip pill wrapped to a second
+         line on every row and each box grew ~20px taller, leaving the metrics
+         stranded above the buttons. max-content gives the pills exactly what they
+         need; the identity takes the slack and truncates rather than pushing the
+         track wider.
+
+         The pills need ~394px of fixed chrome (badges, buttons, gaps) plus ~304px
+         of pills, so a two-column row needs ~860px before the name has any width.
+         The single-column layout below takes over at 960px, before that bites. */
+      grid-template-columns: 14px 10px minmax(0, 1fr) minmax(0, max-content) 120px 190px;
       gap: 12px;
       align-items: center;
       border: 1px solid var(--line);
@@ -348,6 +360,9 @@ export class EspTopologyNode extends LitElement {
 
     .metrics {
       display: flex;
+      /* wrap, not nowrap: the track above is sized to fit all four pills on one
+         line at any desktop width (>=961px), so wrapping only engages as a
+         graceful fallback. nowrap would overflow invisibly instead. */
       flex-wrap: wrap;
       gap: 6px;
       min-width: 0;
@@ -494,7 +509,13 @@ export class EspTopologyNode extends LitElement {
       padding-left: 0;
     }
 
-    @media (max-width: 840px) {
+    /* The single-column layout has to start above the point where the four pills
+       stop fitting next to a name. Fixed chrome (badges + Settings + actions +
+       5 gaps) is ~394px and the pills need ~304px, so a two-column row needs
+       ~860px before the name gets any width at all. Starting the collapse at 840px
+       left a ~90px band where the name was squeezed to 0px and the row overflowed
+       invisibly. 960px hands over while there is still room. */
+    @media (max-width: 960px) {
       :host {
         margin-left: 0;
       }
