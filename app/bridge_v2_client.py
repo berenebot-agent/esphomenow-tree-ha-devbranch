@@ -22,6 +22,11 @@ from .protobuf.generated import esp_tree_runtime_pb2 as pb
 
 logger = logging.getLogger(__name__)
 
+# Minimum spacing between empty-topology refresh attempts (see topology()).
+# The UI polls topology every 3s, so a shorter interval would still allow a
+# sustained handshake storm on a serial bridge with a genuinely empty topology.
+MIN_REFRESH_INTERVAL_S = 30.0
+
 
 class TopologyBroadcast:
     def __init__(self) -> None:
@@ -428,6 +433,7 @@ class BridgeV2Manager:
         # bridge with no host) looks like a working one: it is listed, it is enabled,
         # and nothing anywhere says why no client was started for it.
         self._skipped_bridges: dict[str, str] = {}
+        self._last_refresh_attempt: float | None = None
 
     @property
     def connected(self) -> bool:
@@ -718,10 +724,21 @@ class BridgeV2Manager:
     async def topology(self) -> list[dict[str, Any]]:
         nodes = self.get_topology_list()
         if not nodes and self.connected:
-            logger.info("bridge v2 topology empty but connected, requesting refresh")
-            await self.refresh_once()
-            await asyncio.sleep(2.0)
-            nodes = self.get_topology_list()
+            # Rate-limited: topology() is called from the UI's 3s poll and from many
+            # endpoints, so an unlimited retry here turns a genuinely empty topology
+            # (a bridge with no remotes paired yet) into a continuous handshake
+            # storm. A wedged session used to amplify this too, which is how a
+            # single bad refresh became a 3-per-second loop on the UART.
+            now = time.monotonic()
+            if (
+                self._last_refresh_attempt is None
+                or now - self._last_refresh_attempt >= MIN_REFRESH_INTERVAL_S
+            ):
+                self._last_refresh_attempt = now
+                logger.info("bridge v2 topology empty but connected, requesting refresh")
+                await self.refresh_once()
+                await asyncio.sleep(2.0)
+                nodes = self.get_topology_list()
         return nodes
 
     def get_topology_list(self) -> list[dict[str, Any]]:

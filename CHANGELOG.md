@@ -8,6 +8,8 @@ Future releases should add an entry here.
 
 ## Unreleased
 
+- **Fixed a wedged serial bridge that stopped delivering topology entirely.** On the serial transport a snapshot refresh sent a bare `ClientHello`, which the bridge's UART handler treats as the start of a new session and re-challenges (a UART has no disconnect signal, so a new client must prove possession of the API key again). Nothing was listening for that challenge, so the bridge sat in `CHALLENGE_SENT` — answering keepalive Pings with more challenges, never a Pong, never a snapshot — and the bridge node itself disappeared from the topology. Only a manual reconnect cleared it. `refresh_snapshot()` now drives the full HMAC handshake, so the challenge is answered and the snapshot is delivered.
+- **Rate-limited the empty-topology refresh retry.** It had no spacing and `topology()` is called by the UI's 3s poll, so a genuinely empty topology (or a wedged session) produced a continuous refresh stream — an HMAC handshake every ~3s on the UART. Now spaced to one attempt per 30s, so it stays a recovery path rather than a polling loop.
 - **Removed the separate USB recovery route and device-detail button.** Existing devices continue
   to use the normal Edit YAML → Compile and Flash (USB via Browser) flow.
 - **Moved permanent deletion into Hidden Devices.** Visible devices must be hidden first; the hidden

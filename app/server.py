@@ -397,7 +397,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.324")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.325")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -2289,11 +2289,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="WebSocket transport is not active")
         try:
             nodes = await manager.topology()
-            if not nodes and manager.connected:
-                logger.info("topology empty but bridge connected, retrying with refresh")
-                await manager.refresh_once()
-                await asyncio.sleep(0.5)
-                nodes = await manager.topology()
+            # BridgeV2Manager.topology() owns the rate-limited empty-topology
+            # refresh. Do not duplicate an unconditional refresh here: this endpoint
+            # is polled by the UI every 3s, and on serial that would re-authenticate
+            # on every poll, even while the manager's backoff is in effect.
             if not nodes:
                 raise RuntimeError("bridge returned an empty topology")
         except Exception as exc:

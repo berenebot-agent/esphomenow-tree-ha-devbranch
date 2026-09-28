@@ -474,21 +474,17 @@ class SerialBridgeClient:
         await asyncio.get_running_loop().run_in_executor(None, self._send_envelope_sync, envelope)
 
     async def refresh_snapshot(self) -> None:
-        """Ask the bridge for a full snapshot.
+        """Request a fresh serial session so the bridge sends a new snapshot.
 
-        Public counterpart to BridgeV2Client._send for this call site: the manager
-        used to reach into `client._send(...)`, which only the WebSocket client has,
-        so the refresh raised AttributeError on a serial bridge. That path is only
-        taken when the topology list is empty, which is why it stayed hidden until a
-        remote entry needed rediscovering.
+        The bridge treats every UART ClientHello as a new session and issues a
+        fresh auth challenge, because the UART has no disconnect signal. A bare
+        ClientHello on a live session therefore leaves the bridge re-challenging
+        keepalive Pings with no snapshot and no Pong. Closing the current session
+        is the safe refresh: the reconnect loop reopens the socket and runs the
+        regular full HMAC handshake. For socket:// this does not toggle DTR/RTS
+        or reboot the ESP32.
         """
-        await self._send_async(
-            pb.Envelope(
-                request_id=uuid.uuid4().hex,
-                api_version=API_VERSION,
-                client_hello=pb.ClientHello(request_full_snapshot=True, integration_version="addon"),
-            )
-        )
+        self._schedule_reconnect()
 
     async def request(self, envelope: pb.Envelope, timeout: float = 10.0) -> pb.Envelope:
         if not envelope.request_id:
