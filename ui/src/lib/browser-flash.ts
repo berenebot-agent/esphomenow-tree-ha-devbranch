@@ -120,8 +120,6 @@ export interface ChipDetectionResult {
   /** The raw string esptool reported, for display. */
   detected: string;
   family: ChipFamily | null;
-  /** Factory MAC read from eFuse; ESP Tree uses the ESP-IDF Wi-Fi STA MAC. */
-  mac: string;
 }
 
 /**
@@ -143,8 +141,7 @@ export async function detectChip(port: SerialPort): Promise<ChipDetectionResult>
       debugLogging: false,
     });
     const detected = String(await loader.main());
-    const mac = String(await loader.chip.readMac(loader)).toUpperCase();
-    return { detected, family: chipFamilyFromName(detected), mac };
+    return { detected, family: chipFamilyFromName(detected) };
   } finally {
     try {
       await transport.disconnect();

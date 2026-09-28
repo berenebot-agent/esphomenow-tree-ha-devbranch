@@ -10,7 +10,6 @@ export class EspTopologyNode extends LitElement {
   @property({ attribute: false }) jobForMac: (mac: string) => OtaJob | null = () => null;
   @property({ attribute: false }) configForMac: (mac: string) => ConfigStatus | null = () => null;
   @property({ attribute: false }) onHideDevice: (mac: string) => void = () => {};
-  @property({ attribute: false }) onRemoveDevice: (mac: string) => void = () => {};
   @property({ type: Boolean }) isRoot = false;
   @property({ type: Boolean, reflect: true }) isLast = false;
 
@@ -110,10 +109,6 @@ export class EspTopologyNode extends LitElement {
           ${isRemote ? html`
             <span class="action-buttons">
               <button class="icon-btn" title="Edit YAML config" @click=${(e: Event) => { e.stopPropagation(); this.navigateTo(`/device/${encodeURIComponent(this.node.mac)}/config`); }}>Edit YAML</button>
-              ${this.node.online
-                ? nothing
-                : html`<button class="icon-btn danger" title="Forget this remote (removes it from the network and Home Assistant)"
-                       @click=${(e: Event) => { e.stopPropagation(); this.onRemoveDevice(this.node.mac); }}>Remove</button>`}
             </span>
           ` : nothing}
         </div>
@@ -130,7 +125,6 @@ export class EspTopologyNode extends LitElement {
                     .jobForMac=${this.jobForMac}
                     .configForMac=${this.configForMac}
                     .onHideDevice=${this.onHideDevice}
-                    .onRemoveDevice=${this.onRemoveDevice}
                     .isLast=${i === this.childNodesData.length - 1}
                   ></esp-topology-node>
                 `
@@ -186,10 +180,7 @@ export class EspTopologyNode extends LitElement {
       width: 100%;
       display: grid;
       /* Fixed trailing tracks keep every box - bridge or remote - on the same
-         column grid. With auto tracks each row sized its own columns, so the
-         bridge (which has no OTA/action cells) never aligned with a remote. The
-         trailing widths fit the widest remote content: the Settings button, and
-         the Edit YAML + Remove pair. */
+         column grid. The Settings and Edit YAML action pills share a fixed width. */
       /* The metrics column must hold all four pills on ONE line, and the identity
          column yields to it. It was minmax(0, 1fr), which lets the track collapse
          to whatever is left over: at a 913px row that is ~245px, while four 76px
@@ -199,10 +190,9 @@ export class EspTopologyNode extends LitElement {
          need; the identity takes the slack and truncates rather than pushing the
          track wider.
 
-         The pills need ~394px of fixed chrome (badges, buttons, gaps) plus ~304px
-         of pills, so a two-column row needs ~860px before the name has any width.
-         The single-column layout below takes over at 960px, before that bites. */
-      grid-template-columns: 14px 10px minmax(0, 1fr) minmax(0, max-content) 120px 190px;
+         Settings and Edit YAML controls each use a 112px track; the single-column
+         layout below takes over at 960px to preserve room for the device name. */
+      grid-template-columns: 14px 10px minmax(0, 1fr) minmax(0, max-content) 112px 112px;
       gap: 12px;
       align-items: center;
       border: 1px solid var(--line);
@@ -292,14 +282,18 @@ export class EspTopologyNode extends LitElement {
 
     .action-buttons {
       display: flex;
-      gap: 12px;
+      width: 112px;
+      gap: 8px;
     }
 
     .icon-btn {
+      box-sizing: border-box;
+      width: 112px;
+      flex: 0 0 112px;
       border: 1px solid #0f766e;
       background: #0f766e;
       color: #fff;
-      padding: 0 14px;
+      padding: 0 10px;
       font: inherit;
       font-size: 12px;
       font-weight: 500;
@@ -310,18 +304,6 @@ export class EspTopologyNode extends LitElement {
     .icon-btn:hover {
       background: #0d5f58;
       border-color: #0d5f58;
-      transform: translateY(-1px);
-    }
-
-    .icon-btn.danger {
-      background: #fff;
-      border-color: #fecaca;
-      color: #b91c1c;
-    }
-
-    .icon-btn.danger:hover {
-      background: #fef2f2;
-      border-color: #fca5a5;
       transform: translateY(-1px);
     }
 
@@ -509,12 +491,8 @@ export class EspTopologyNode extends LitElement {
       padding-left: 0;
     }
 
-    /* The single-column layout has to start above the point where the four pills
-       stop fitting next to a name. Fixed chrome (badges + Settings + actions +
-       5 gaps) is ~394px and the pills need ~304px, so a two-column row needs
-       ~860px before the name gets any width at all. Starting the collapse at 840px
-       left a ~90px band where the name was squeezed to 0px and the row overflowed
-       invisibly. 960px hands over while there is still room. */
+    /* Keep enough horizontal room for the identity beside the four metric pills
+       and the fixed-width Settings/Edit YAML actions before using two columns. */
     @media (max-width: 960px) {
       :host {
         margin-left: 0;

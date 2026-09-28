@@ -8,7 +8,12 @@ Future releases should add an entry here.
 
 ## Unreleased
 
-- **USB recovery flash from a device detail page.** The recovery entry uses the device's existing YAML/config and the existing compile + browser-flash path; it does not create a new device, edit shared network secrets, or offer credential changes. A prominent red warning asks the user to type the selected MAC, then the UI reads the connected chip's eFuse MAC and refuses to compile if it does not match the tree entry. Hardware verification is still required before release.
+- **Removed the separate USB recovery route and device-detail button.** Existing devices continue
+  to use the normal Edit YAML → Compile and Flash (USB via Browser) flow.
+- **Moved permanent deletion into Hidden Devices.** Visible devices must be hidden first; the hidden
+  list now offers equal-width Restore and Delete pills, with a confirmation before permanent deletion.
+- **Standardized device action pills.** Settings and Edit YAML controls now use the same fixed width.
+
 - **Browser USB flashing no longer asks for the device twice.** `esp-web-tools`' install
   dialog calls `navigator.serial.requestPort()` itself, so the USB chooser appeared again
   even when the wizard had just detected the chip over the same port. The detected port is

@@ -73,17 +73,16 @@ export class EspTopologyMap extends LitElement {
   }
 
   /**
-   * Forget a retained/stale remote for good. Confirmed first: unlike hide, this
-   * destroys the record and cannot be undone from the UI.
+   * Permanently delete a device, but only after it has been moved into Hidden Devices.
    */
   private async handleRemoveDevice(mac: string): Promise<void> {
     const node = this.topology.find((n) => n.mac === mac);
-    const label = node?.friendly_name || node?.esphome_name || node?.label || mac;
+    if (!node?.hidden || node.is_bridge) return;
+    const label = node.friendly_name || node.esphome_name || node.label || mac;
     if (!window.confirm(
-      `Remove ${label} permanently?\n\n` +
-      'This deletes it from the add-on and from Home Assistant, including any ' +
-      'retained history. It cannot be undone from here. ' +
-      'If the device is still powered on it will simply reappear.'
+      `Are you sure you want to delete ${label} forever?\n\n` +
+      'This permanently deletes it from ESP Tree and Home Assistant, including retained history. ' +
+      'It cannot be undone. If the device is still powered on, it may reappear.'
     )) {
       return;
     }
@@ -91,7 +90,7 @@ export class EspTopologyMap extends LitElement {
       await api.removeRemote(mac);
       await this.load(false, true);
     } catch (err) {
-      console.error('Failed to remove device:', err);
+      this.error = err instanceof Error ? `Could not delete ${label}: ${err.message}` : `Could not delete ${label}: ${String(err)}`;
     }
   }
 
@@ -181,7 +180,6 @@ export class EspTopologyMap extends LitElement {
                     .jobForMac=${(mac: string) => this.jobForMac(mac)}
                     .configForMac=${(mac: string) => this.configForMac(mac)}
                     .onHideDevice=${(mac: string) => this.handleHideDevice(mac)}
-                    .onRemoveDevice=${(mac: string) => this.handleRemoveDevice(mac)}
                     .isRoot=${true}
                   ></esp-topology-node>
                 </div>
@@ -206,7 +204,10 @@ export class EspTopologyMap extends LitElement {
                             <span class="device-name">${node.friendly_name || node.esphome_name || node.label || node.mac}</span>
                             <span class="device-mac">${node.mac}</span>
                             <span class="device-status">${node.offline_reason || 'offline'}</span>
-                            <button class="restore-btn" @click=${(e: Event) => { e.stopPropagation(); void this.handleUnhideDevice(node.mac); }}>Restore</button>
+                            <span class="hidden-device-actions">
+                              <button class="restore-btn" @click=${(e: Event) => { e.stopPropagation(); void this.handleUnhideDevice(node.mac); }}>Restore</button>
+                              ${node.is_bridge ? nothing : html`<button class="delete-btn" @click=${(e: Event) => { e.stopPropagation(); void this.handleRemoveDevice(node.mac); }}>Delete</button>`}
+                            </span>
                           </div>
                         `)}
                       </div>
@@ -374,26 +375,51 @@ export class EspTopologyMap extends LitElement {
       font-size: 12px;
     }
 
-    .hidden-device-row .restore-btn {
+    .hidden-device-actions {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .hidden-device-row .restore-btn,
+    .hidden-device-row .delete-btn {
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 112px;
+      min-height: 26px;
+      padding: 0 10px;
       border: 1px solid var(--line);
       background: #fff;
-      border-radius: 6px;
+      border-radius: 999px;
       cursor: pointer;
       font-size: 12px;
       font-weight: 500;
-      color: var(--ink);
-      transition: all 0.12s;
+      line-height: 1;
       white-space: nowrap;
+      transition: all 0.12s;
+    }
+
+    .hidden-device-row .restore-btn {
+      color: var(--ink);
     }
 
     .hidden-device-row .restore-btn:hover {
       background: var(--ok);
       color: #fff;
       border-color: var(--ok);
+    }
+
+    .hidden-device-row .delete-btn {
+      border-color: #fecaca;
+      color: #b91c1c;
+    }
+
+    .hidden-device-row .delete-btn:hover {
+      background: #fef2f2;
+      border-color: #fca5a5;
     }
 
     @media (max-width: 720px) {
