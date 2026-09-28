@@ -13,6 +13,12 @@ Future releases should add an entry here.
 - **Moved permanent deletion into Hidden Devices.** Visible devices must be hidden first; the hidden
   list now offers equal-width Restore and Delete pills, with a confirmation before permanent deletion.
 - **Standardized device action pills.** Settings and Edit YAML controls now use the same fixed width.
+- **Dropped the config-state badge from topology rows.** The small bordered glyph left of each status
+  light (`—` / `✓` / `↑`) read as a disabled button and was ambient state nobody acts on from the row.
+  Config state is still on the device page. The one case that changes what the row's button does — no
+  YAML yet, so Edit YAML opens "Create Config" instead of an editor — is now a small amber dot on that
+  button. The `compile_queued`/`compiling` states also no longer render as a misleading `—`, since the
+  badge is gone.
 
 - **Browser USB flashing no longer asks for the device twice.** `esp-web-tools`' install
   dialog calls `navigator.serial.requestPort()` itself, so the USB chooser appeared again

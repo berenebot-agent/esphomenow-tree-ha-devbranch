@@ -52,6 +52,10 @@ export class EspTopologyNode extends LitElement {
 
     const configStatus = this.configForMac(this.node.mac);
     const configState = configStatus?.config_state ?? 'no_config';
+    // The row shows no config badge any more; the only config fact worth surfacing
+    // inline is the one that changes what the Edit YAML click does - with no YAML
+    // yet that page offers "Create Config", not an editor, so flag it on the button.
+    const needsConfig = isRemote && configState === 'no_config';
     const isCompiling = configState === 'compiling';
     const isCompileQueued = configState === 'compile_queued';
     const compileQueuePos = configStatus?.queue_position ?? 1;
@@ -60,16 +64,9 @@ export class EspTopologyNode extends LitElement {
       <div class="tree-row">
         <div class="branch ${this.isRoot ? 'root' : ''}" aria-hidden="true"></div>
         <div class="tree-node ${this.node.online ? 'online' : 'offline'}" @click=${this.selectNode}>
-          ${isRemote ? html`
-            <span class="config-badge config-${configState}">
-              ${configState === 'no_config' ? '—' : configState === 'has_config' ? '✓' : configState === 'compiled_ready' ? '↑' : '—'}
-            </span>
-          ` : this.isRoot ? html`
-            <span class="bridge-badge">B</span>
-          ` : html`<span></span>`}
           <span class="status-dot ${this.node.online ? 'online' : 'offline'}"></span>
           <span class="identity">
-            <span class="bridge-name-line">${this.isRoot && this.node.network_id ? html`<strong>${this.node.friendly_name || this.node.esphome_name || this.node.label || this.node.mac}</strong><span class="network-id">${this.node.network_id}</span>` : html`<strong>${this.node.friendly_name || this.node.esphome_name || this.node.label || this.node.mac}</strong>`}</span>
+            <span class="bridge-name-line">${this.isRoot ? html`<span class="bridge-badge" title="Bridge">B</span>` : nothing}${this.isRoot && this.node.network_id ? html`<strong>${this.node.friendly_name || this.node.esphome_name || this.node.label || this.node.mac}</strong><span class="network-id">${this.node.network_id}</span>` : html`<strong>${this.node.friendly_name || this.node.esphome_name || this.node.label || this.node.mac}</strong>`}</span>
             <small>${this.node.mac}</small>
           </span>
           <span class="metrics">
@@ -108,7 +105,7 @@ export class EspTopologyNode extends LitElement {
           ` : html`<span></span>`}
           ${isRemote ? html`
             <span class="action-buttons">
-              <button class="icon-btn" title="Edit YAML config" @click=${(e: Event) => { e.stopPropagation(); this.navigateTo(`/device/${encodeURIComponent(this.node.mac)}/config`); }}>Edit YAML</button>
+              <button class="icon-btn" title="Edit YAML config" @click=${(e: Event) => { e.stopPropagation(); this.navigateTo(`/device/${encodeURIComponent(this.node.mac)}/config`); }}>Edit YAML${needsConfig ? html`<span class="config-dot" title="No configuration yet"></span>` : nothing}</button>
             </span>
           ` : nothing}
         </div>
@@ -180,7 +177,8 @@ export class EspTopologyNode extends LitElement {
       width: 100%;
       display: grid;
       /* Fixed trailing tracks keep every box - bridge or remote - on the same
-         column grid. The Settings and Edit YAML action pills share a fixed width. */
+         column grid: status dot, identity, metrics, then the Settings and
+         Edit YAML action pills, each a fixed 112px. */
       /* The metrics column must hold all four pills on ONE line, and the identity
          column yields to it. It was minmax(0, 1fr), which lets the track collapse
          to whatever is left over: at a 913px row that is ~245px, while four 76px
@@ -190,9 +188,9 @@ export class EspTopologyNode extends LitElement {
          need; the identity takes the slack and truncates rather than pushing the
          track wider.
 
-         Settings and Edit YAML controls each use a 112px track; the single-column
-         layout below takes over at 960px to preserve room for the device name. */
-      grid-template-columns: 14px 10px minmax(0, 1fr) minmax(0, max-content) 112px 112px;
+         The single-column layout below takes over at 960px to preserve room for
+         the device name. */
+      grid-template-columns: 10px minmax(0, 1fr) minmax(0, max-content) 112px 112px;
       gap: 12px;
       align-items: center;
       border: 1px solid var(--line);
@@ -226,35 +224,6 @@ export class EspTopologyNode extends LitElement {
       background: var(--ok);
     }
 
-    .config-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 14px;
-      height: 14px;
-      font-size: 9px;
-      font-weight: 700;
-      border: 1px solid var(--line);
-      border-radius: 4px;
-    }
-
-    .config-badge.config-has_config {
-      border-color: var(--ok);
-      color: var(--ok);
-      background: #dcfce7;
-    }
-
-    .config-badge.config-compiled_ready {
-      border-color: var(--primary);
-      color: var(--primary);
-      background: #d5f0f3;
-    }
-
-    .config-badge.config-no_config {
-      border-color: var(--line);
-      color: var(--muted);
-    }
-
     .bridge-badge {
       display: inline-flex;
       align-items: center;
@@ -266,6 +235,19 @@ export class EspTopologyNode extends LitElement {
       border-radius: 4px;
       background: var(--primary);
       color: #fff;
+      flex-shrink: 0;
+    }
+
+    /* Marks the one config state that changes what the button does: no YAML yet, so
+       Edit YAML opens "Create Config" rather than an editor. A dot rather than a
+       count, because the row has no space for a label and none is needed. */
+    .config-dot {
+      width: 6px;
+      height: 6px;
+      margin-left: 6px;
+      border-radius: 50%;
+      background: #fbbf24;
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
       flex-shrink: 0;
     }
 
@@ -361,8 +343,6 @@ export class EspTopologyNode extends LitElement {
     .metrics span,
     .metrics .hide-pill,
     .pill-placeholder,
-    .config-badge,
-    .bridge-badge,
     .ota-badge,
     .icon-btn {
       box-sizing: border-box;
@@ -506,9 +486,6 @@ export class EspTopologyNode extends LitElement {
         align-items: start;
         gap: 6px 10px;
         padding: 12px 12px;
-      }
-      .config-badge {
-        display: none;
       }
       .status-dot {
         grid-column: 2;
