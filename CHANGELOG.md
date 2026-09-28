@@ -8,6 +8,7 @@ Future releases should add an entry here.
 
 ## Unreleased
 
+- **USB recovery flash from a device detail page.** The recovery entry uses the device's existing YAML/config and the existing compile + browser-flash path; it does not create a new device, edit shared network secrets, or offer credential changes. A prominent red warning asks the user to type the selected MAC, then the UI reads the connected chip's eFuse MAC and refuses to compile if it does not match the tree entry. Hardware verification is still required before release.
 - **Browser USB flashing no longer asks for the device twice.** `esp-web-tools`' install
   dialog calls `navigator.serial.requestPort()` itself, so the USB chooser appeared again
   even when the wizard had just detected the chip over the same port. The detected port is

@@ -4,7 +4,7 @@ import '../components/config-editor';
 import '../components/compile-log-viewer';
 import { hasEspTreeExternalComponents } from '../components/config-editor';
 import { api, CompileStatusResponse, DeviceConfig, normalizeMac, PreflightComparison } from '../api/client';
-import { chipFamilyFromName, openInstallDialog, usbFlashSupported } from '../lib/browser-flash';
+import { chipFamilyFromName, detectChip, openInstallDialog, usbFlashSupported } from '../lib/browser-flash';
 
 type PageState = 'loading' | 'no_config' | 'editor';
 type CompilePhase = 'idle' | 'compile_queued' | 'compiling' | 'compiled' | 'failed' | 'queued_for_flash';
@@ -34,6 +34,12 @@ function chipFamilyFromYaml(yaml: string): string | null {
 @customElement('esp-config-page')
 export class EspConfigPage extends LitElement {
   @property({ type: String }) mac = '';
+  @property({ type: Boolean }) usbRecovery = false;
+  @state() private recoveryConfirmedMac = '';
+  @state() private recoveryChipName = '';
+  @state() private recoveryPort: SerialPort | null = null;
+  @state() private recoveryError = '';
+  @state() private recoveryDetecting = false;
   @state() private state: PageState = 'loading';
   @state() private device: Record<string, unknown> | null = null;
   @state() private config: DeviceConfig | null = null;
@@ -506,8 +512,59 @@ export class EspConfigPage extends LitElement {
   }
 
   private async triggerBrowserFlashFlow(): Promise<void> {
+    if (this.usbRecovery) {
+      await this.verifyRecoveryChip();
+      if (!this.recoveryPort) return;
+    }
     this.flashIntent = 'browser';
     await this.queueCompile(false);
+  }
+
+  /**
+   * In recovery mode, verify the chip's factory MAC before compiling/flashing so we
+   * cannot accidentally write a different device's identity into this tree entry.
+   */
+  private async verifyRecoveryChip(): Promise<void> {
+    this.recoveryError = '';
+    this.recoveryChipName = '';
+    this.recoveryPort = null;
+    if (normalizeMac(this.recoveryConfirmedMac) !== normalizeMac(this.mac)) {
+      this.recoveryError = `Type this device's MAC exactly (${this.mac}) to continue.`;
+      return;
+    }
+    if (!usbFlashSupported() || !navigator.serial) {
+      this.recoveryError = 'USB recovery requires Web Serial in a secure browser context (Chrome or Edge).';
+      return;
+    }
+    this.recoveryDetecting = true;
+    try {
+      // Request the port synchronously from this user click, before any dynamic import or
+      // compile work can consume the browser's transient user activation.
+      const port = await navigator.serial.requestPort();
+      const result = await detectChip(port);
+      const expectedMac = normalizeMac(this.mac);
+      const actualMac = normalizeMac(result.mac);
+      if (actualMac !== expectedMac) {
+        this.recoveryError = `Wrong chip: USB reports ${result.mac}, but this tree entry is ${this.mac}. Nothing was compiled or flashed.`;
+        return;
+      }
+      const expectedFamily = this.browserFlashChipFamily;
+      const actualFamily = chipFamilyFromName(result.detected);
+      if (expectedFamily && actualFamily !== expectedFamily) {
+        this.recoveryError = `Chip family mismatch: USB reports ${result.detected}, but this config targets ${expectedFamily}. Nothing was compiled or flashed.`;
+        return;
+      }
+      this.recoveryChipName = result.detected;
+      this.recoveryPort = port;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'NotFoundError') {
+        this.recoveryError = 'No USB device was selected.';
+      } else {
+        this.recoveryError = err instanceof Error ? err.message : String(err);
+      }
+    } finally {
+      this.recoveryDetecting = false;
+    }
   }
 
   /**
@@ -523,6 +580,7 @@ export class EspConfigPage extends LitElement {
     try {
       const result = await openInstallDialog({
         manifestUrl: this.browserFlashManifestUrl,
+        port: this.usbRecovery ? this.recoveryPort : null,
         onClosed: () => this.onBrowserFlashClosed(),
       });
       if (result === 'cancelled') {
@@ -636,6 +694,27 @@ export class EspConfigPage extends LitElement {
           <button class="btn btn-edit-config" @click=${this.goToSecrets}>Secrets &#9881;</button>
         </header>
 
+        ${this.usbRecovery
+          ? html`
+              <section class="usb-recovery-warning" role="alert">
+                <h3>USB recovery flash — wrong-device risk</h3>
+                <p><strong>Only continue if the USB chip is the same physical device as this tree entry.</strong>
+                  Flashing a different chip with this device's config can create duplicate network identities or overwrite the wrong device.</p>
+                <p>We will read the chip's factory MAC over USB and stop unless it matches <code>${this.mac}</code>.
+                  This uses the existing YAML and its current network credentials; it does not edit shared secrets.</p>
+                <label>Type <code>${this.mac}</code> to confirm
+                  <input .value=${this.recoveryConfirmedMac}
+                    @input=${(e: Event) => { this.recoveryConfirmedMac = (e.target as HTMLInputElement).value; }}
+                    autocomplete="off" spellcheck="false" />
+                </label>
+                ${this.recoveryChipName
+                  ? html`<p class="recovery-match">Verified USB chip ${this.recoveryChipName} — MAC matches.</p>`
+                  : nothing}
+                ${this.recoveryError ? html`<p class="recovery-error">${this.recoveryError}</p>` : nothing}
+              </section>
+            `
+          : nothing}
+
         ${this.state === 'loading'
           ? html`<div class="card">Loading config...</div>`
           : this.state === 'no_config'
@@ -715,7 +794,7 @@ export class EspConfigPage extends LitElement {
                       ? html`
                           <button class="btn btn-success" ?disabled=${!this.config} @click=${this.triggerCompile}>Compile</button>
                           <button class="btn btn-primary" ?disabled=${!this.config} @click=${this.triggerOtaFlash}>Compile and Flash (OTA)</button>
-                          <button class="btn" ?disabled=${!this.config} @click=${this.triggerBrowserFlashFlow}>Compile and Flash (USB via Browser)</button>
+                          <button class="btn" ?disabled=${!this.config || this.recoveryDetecting || (this.usbRecovery && normalizeMac(this.recoveryConfirmedMac) !== normalizeMac(this.mac))} @click=${this.triggerBrowserFlashFlow}>${this.usbRecovery ? (this.recoveryDetecting ? 'Checking USB chip…' : 'Verify, Compile and Flash via USB') : 'Compile and Flash (USB via Browser)'}</button>
                         `
                       : this.compilePhase === 'compiling' || this.compilePhase === 'compile_queued'
                         ? html`<button class="btn btn-danger" @click=${this.cancelCompile}>Cancel</button>`
@@ -814,6 +893,40 @@ export class EspConfigPage extends LitElement {
       color: var(--ink);
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
+    .usb-recovery-warning {
+      margin: 0 0 18px;
+      padding: 16px 20px;
+      border: 2px solid #b91c1c;
+      border-left-width: 8px;
+      border-radius: 10px;
+      background: #fef2f2;
+      color: #7f1d1d;
+    }
+    .usb-recovery-warning h3 {
+      margin: 0 0 8px;
+      color: #991b1b;
+      font-size: 18px;
+    }
+    .usb-recovery-warning p { margin: 8px 0; }
+    .usb-recovery-warning label {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      font-weight: 700;
+    }
+    .usb-recovery-warning input {
+      min-width: min(320px, 100%);
+      min-height: 38px;
+      padding: 6px 10px;
+      border: 1px solid #b91c1c;
+      border-radius: 6px;
+      font: inherit;
+    }
+    .recovery-match { color: #166534; font-weight: 700; }
+    .recovery-error { color: #991b1b; font-weight: 700; }
+
     .config-header {
       display: flex;
       align-items: end;

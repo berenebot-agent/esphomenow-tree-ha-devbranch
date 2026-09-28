@@ -113,6 +113,10 @@ export class EspDeviceDetail extends LitElement {
     window.location.hash = '/';
   }
 
+  private openUsbRecovery(): void {
+    window.location.hash = `/device/${encodeURIComponent(this.mac)}/config?usbRecovery=1`;
+  }
+
   render() {
     if (this.loading) return html`<div class="card">Loading device...</div>`;
     if (this.error) return html`<div class="card error">${this.error}</div>`;
@@ -145,6 +149,14 @@ export class EspDeviceDetail extends LitElement {
             <a class="hero-entities ${this.node.ha_device_id ? '' : 'not-added'}" href="${this.node.ha_device_id ? `/config/devices/device/${this.node.ha_device_id}` : '/config/integrations/dashboard/add?domain=esp_tree'}" target="_blank" rel="noopener"><span class="lbl">Entities</span><span class="val">${this.node.ha_device_id ? 'View in HA' : 'Not Yet Added'}</span></a>
           </div>
         </div>
+      </section>
+
+      <section class="usb-recovery-entry">
+        <div>
+          <strong>Need to restore this device?</strong>
+          <p>Compile its existing configuration and flash by USB. You must verify the chip identity first.</p>
+        </div>
+        <button class="recovery-btn" @click=${this.openUsbRecovery}>USB recovery flash</button>
       </section>
 
       <div class="layout">
@@ -387,6 +399,39 @@ static styles = css`
     .btn-edit-config:hover {
       background: #0d5f58;
       border-color: #0d5f58;
+    }
+
+    .usb-recovery-entry {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 0 20px;
+      padding: 14px 18px;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      background: #fff7f7;
+    }
+    .usb-recovery-entry p {
+      margin: 4px 0 0;
+      color: #7f1d1d;
+      font-size: 13px;
+    }
+    .recovery-btn {
+      flex: 0 0 auto;
+      min-height: 38px;
+      padding: 0 16px;
+      border: 1px solid #b91c1c;
+      border-radius: 8px;
+      background: #b91c1c;
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .recovery-btn:hover { background: #991b1b; }
+    @media (max-width: 600px) {
+      .usb-recovery-entry { align-items: stretch; flex-direction: column; }
     }
 
     .layout {
