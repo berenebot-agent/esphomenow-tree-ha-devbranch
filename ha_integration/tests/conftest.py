@@ -78,6 +78,7 @@ def _setup_mocks():
     ha.helpers.selector.AreaSelector = lambda *a, **k: None
     ha.helpers.entity = types.ModuleType("homeassistant.helpers.entity")
     ha.helpers.entity.Entity = type("Entity", (), {"async_write_ha_state": lambda self: None})
+    ha.helpers.entity.EntityCategory = type("EntityCategory", (), {"DIAGNOSTIC": "diagnostic"})
     ha.helpers.device_registry = types.ModuleType("homeassistant.helpers.device_registry")
     ha.helpers.device_registry.DeviceInfo = dict
     ha.helpers.device_registry.async_get = MagicMock()
@@ -145,6 +146,11 @@ def _setup_mocks():
     sys.modules["aiohttp"] = aiohttp_mod
 
     # HA component mocks
+    sensor_mod = types.ModuleType("homeassistant.components.sensor")
+    sensor_mod.SensorEntity = type("SensorEntity", (object,), {})
+    sensor_mod.SensorDeviceClass = type("SensorDeviceClass", (), {"SIGNAL_STRENGTH": "signal_strength", "DURATION": "duration"})
+    sys.modules["homeassistant.components.sensor"] = sensor_mod
+
     light_mod = types.ModuleType("homeassistant.components.light")
     light_mod.LightEntity = type("LightEntity", (object,), {"__init__": lambda self: None})
     light_mod.ColorMode = type("ColorMode", (), {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -119,8 +121,13 @@ class RemoteDiagnosticSensor(SensorEntity):
         if self._object_id == "uptime_s":
             return int(remote.uptime_s or 0)
         if self._object_id == "last_seen_s":
-            last_seen_bridge_uptime_s = remote.last_live_observed_ms // 1000
-            return last_seen_bridge_uptime_s if last_seen_bridge_uptime_s > 0 else None
+            bridge_uptime_s = runtime._effective_bridge_uptime(remote.bridge_mac)
+            last_seen_bridge_uptime_s = remote.last_seen_bridge_uptime_s
+            last_seen_observed_at = remote.last_seen_observed_at
+            if bridge_uptime_s <= 0 or last_seen_bridge_uptime_s <= 0 or last_seen_observed_at <= 0:
+                return None
+            effective_last_seen = last_seen_bridge_uptime_s + max(0, int(time.time() - last_seen_observed_at))
+            return max(0, bridge_uptime_s - effective_last_seen)
         if self._object_id == "chip_name":
             return normalize_chip_name(remote.chip_name)
         return None
