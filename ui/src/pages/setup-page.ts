@@ -76,6 +76,8 @@ export class EspSetupWizard extends LitElement {
   @state() private flashOtaPassword = '';
   @state() private flashChipName = '';
   @state() private flashTransport: 'wifi' | 'serial' = 'wifi';
+  @state() private flashTransportChosen = false;
+  @state() private flashPrefilledFields: Record<string, boolean> = {};
   @state() private flashSerialPort = '';
   @state() private flashSerialPorts: SerialPort[] = [];
   @state() private flashSerialPortScanning = false;
@@ -649,7 +651,16 @@ export class EspSetupWizard extends LitElement {
   private onChooseNewBridge(): void {
     this.step1Choice = 'new';
     this.flashTab = 'flash';
+    this.flashTransportChosen = false;
     void this.loadFlashWizardDefaults();
+  }
+
+  private onChooseTransport(transport: 'wifi' | 'serial'): void {
+    this.flashTransport = transport;
+    this.flashTransportChosen = true;
+    if (transport === 'serial') {
+      void this.scanFlashSerialPorts();
+    }
   }
 
   private onBackToChoose(): void {
@@ -702,8 +713,18 @@ export class EspSetupWizard extends LitElement {
       if (networkId) this.flashNetworkId = networkId;
       if (psk) this.flashPsk = psk;
 
+      this.flashPrefilledFields = {
+        wifiSsid: !!wifiSsid,
+        wifiPassword: !!wifiPassword,
+        otaPassword: !!otaPassword,
+        apiKey: !!apiKey,
+        networkId: !!networkId,
+        psk: !!psk,
+      };
+
       if (networkId || psk) {
-        this.flashSecretsWarning = 'Existing network credentials detected. Changing Network ID or PSK will break communication with any existing remotes on this network.';
+        const prefilled = [networkId ? 'Network ID' : '', psk ? 'PSK' : ''].filter(Boolean).join(' and ');
+        this.flashSecretsWarning = `Existing network credentials detected. ${prefilled} pre-filled from your current configuration. Changing the Network ID or PSK will break communication with any existing remotes on this network.`;
       } else {
         this.flashSecretsWarning = '';
       }
@@ -772,6 +793,7 @@ export class EspSetupWizard extends LitElement {
     if (!this.flashPsk.trim()) errors.push('ESP-NOW PSK is required');
     if (!this.flashWifiSsid.trim() && this.flashTransport === 'wifi') errors.push('WiFi SSID is required');
     if (!this.flashWifiPassword.trim() && this.flashTransport === 'wifi') errors.push('WiFi Password is required');
+    if (!this.flashSerialPort && this.flashTransport === 'serial') errors.push('Serial port is required for serial transport');
     if (!/^[0-9a-fA-F]{64}$/.test(this.flashPsk.trim())) {
       errors.push('PSK must be 64 hex characters');
     }
@@ -1024,6 +1046,9 @@ export class EspSetupWizard extends LitElement {
     if (this.flashStage === 'flashing' || this.flashStage === 'compiling' || this.flashStage === 'error') {
       return '← Back to Configure';
     }
+    if (this.flashStage === 'config' && this.flashTransportChosen) {
+      return '← Back to bridge type';
+    }
     return '← Back';
   }
 
@@ -1049,6 +1074,11 @@ export class EspSetupWizard extends LitElement {
         await api.cancelCompile(this.flashMac).catch(() => {});
       }
       this.resetFlashWizard();
+      return;
+    }
+
+    if (this.flashTransportChosen) {
+      this.flashTransportChosen = false;
       return;
     }
 
@@ -1370,6 +1400,9 @@ export class EspSetupWizard extends LitElement {
     if (this.flashStage !== 'config') {
       return this.renderFlashProgress();
     }
+    if (!this.flashTransportChosen) {
+      return this.renderTransportChoice();
+    }
     return html`
       <div class="flash-stage-indicator">
         <span class="stage-dot active">Configure</span>
@@ -1382,6 +1415,8 @@ export class EspSetupWizard extends LitElement {
       </div>
 
       <div class="flash-form">
+        <div class="transport-badge">${this.flashTransport === 'serial' ? 'Serial (USB-UART) transport' : 'Wi-Fi transport'}</div>
+
         ${this.flashSecretsWarning ? html`
           <div class="flash-warning">${this.flashSecretsWarning}</div>
         ` : nothing}
@@ -1395,37 +1430,46 @@ export class EspSetupWizard extends LitElement {
         </label>
 
         <label>
-          ESP-NOW Network ID
+          ESP-NOW Network ID ${this.prefillTag('networkId')}
           <input type="text" placeholder="ESP-NOW network name" .value=${this.flashNetworkId} @input=${(e: Event) => this.flashNetworkId = (e.target as HTMLInputElement).value} />
         </label>
 
         <label>
-          ESP-NOW PSK (64 hex chars)
+          ESP-NOW PSK (64 hex chars) ${this.prefillTag('psk')}
           <div class="flash-key-row">
             <input type="text" placeholder="32-byte hex key" .value=${this.flashPsk} @input=${(e: Event) => this.flashPsk = (e.target as HTMLInputElement).value} />
             <button class="btn btn-outline btn-sm" @click=${() => this.flashPsk = this.generateRandomHex(32)}>Generate</button>
           </div>
         </label>
 
-        <label>
-          Transport
-          <select .value=${this.flashTransport} @change=${(e: Event) => this.flashTransport = ((e.target as HTMLSelectElement).value === 'serial' ? 'serial' : 'wifi')}>
-            <option value="wifi">WiFi / MQTT</option>
-            <option value="serial">Serial (USB-UART)</option>
-          </select>
-        </label>
-
         ${this.flashTransport === 'wifi' ? html`
           <label>
-            WiFi SSID
+            WiFi SSID ${this.prefillTag('wifiSsid')}
             <input type="text" placeholder="WiFi network name" .value=${this.flashWifiSsid} @input=${(e: Event) => this.flashWifiSsid = (e.target as HTMLInputElement).value} />
           </label>
 
           <label>
-            WiFi Password
+            WiFi Password ${this.prefillTag('wifiPassword')}
             <input type="password" placeholder="WiFi password" .value=${this.flashWifiPassword} @input=${(e: Event) => this.flashWifiPassword = (e.target as HTMLInputElement).value} />
           </label>
         ` : html`
+          <label>
+            Serial Port
+            <div class="flash-key-row">
+              <select .value=${this.flashSerialPort} @change=${(e: Event) => this.flashSerialPort = (e.target as HTMLSelectElement).value}>
+                <option value="">-- Select port --</option>
+                ${this.flashSerialPorts.map(p => html`
+                  <option value=${p.port} ?selected=${this.flashSerialPort === p.port}>${p.port} — ${p.description}</option>
+                `)}
+              </select>
+              <button class="btn btn-outline btn-sm" @click=${() => void this.scanFlashSerialPorts()} ?disabled=${this.flashSerialPortScanning}>
+                ${this.flashSerialPortScanning ? 'Scanning...' : 'Rescan'}
+              </button>
+            </div>
+          </label>
+          ${this.flashSerialFlashError ? html`
+            <div class="flash-warning">${this.flashSerialFlashError}</div>
+          ` : nothing}
           <div class="flash-warning">
             Serial transport: no WiFi credentials are needed. The bridge talks to the add-on over its
             UART0 pins (wired to a USB-UART adapter), and the console is pinned to the same UART so
@@ -1434,27 +1478,11 @@ export class EspSetupWizard extends LitElement {
         `}
 
         <label>
-          API Key <span class="muted">(will be remembered by addon)</span>
-          <div class="flash-key-row">
-            <input type="text" placeholder="Auto-generated" .value=${this.flashApiKey} @input=${(e: Event) => this.flashApiKey = (e.target as HTMLInputElement).value} />
-            <button class="btn btn-outline btn-sm" @click=${() => this.flashApiKey = this.generateRandomBase64(18)}>Generate</button>
-          </div>
-        </label>
-
-        <label>
           ESP-NOW Mode
           <select .value=${this.flashEspnowMode} @change=${(e: Event) => this.flashEspnowMode = (e.target as HTMLSelectElement).value}>
             <option value="lr">Long Range (LR)</option>
             <option value="regular">Regular</option>
           </select>
-        </label>
-
-        <label>
-          OTA Password <span class="muted">(will be remembered by addon)</span>
-          <div class="flash-key-row">
-            <input type="text" placeholder="Auto-generated" .value=${this.flashOtaPassword} @input=${(e: Event) => this.flashOtaPassword = (e.target as HTMLInputElement).value} />
-            <button class="btn btn-outline btn-sm" @click=${() => this.flashOtaPassword = this.generateRandomHex(16)}>Generate</button>
-          </div>
         </label>
 
         <label>
@@ -1483,9 +1511,63 @@ export class EspSetupWizard extends LitElement {
           Connect the new ESP to this computer by USB and click Detect Connected ESP before compiling. Detection uses Web Serial in Chrome/Edge. Manual board selection is available as a fallback.
         </div>
 
+        <details class="advanced-section">
+          <summary>Advanced</summary>
+          <div class="advanced-body">
+            <label>
+              API Key ${this.prefillTag('apiKey')} <span class="muted">(will be remembered by addon)</span>
+              <div class="flash-key-row">
+                <input type="text" placeholder="Auto-generated" .value=${this.flashApiKey} @input=${(e: Event) => this.flashApiKey = (e.target as HTMLInputElement).value} />
+                <button class="btn btn-outline btn-sm" @click=${() => this.flashApiKey = this.generateRandomBase64(18)}>Generate</button>
+              </div>
+            </label>
+
+            <label>
+              OTA Password ${this.prefillTag('otaPassword')} <span class="muted">(will be remembered by addon)</span>
+              <div class="flash-key-row">
+                <input type="text" placeholder="Auto-generated" .value=${this.flashOtaPassword} @input=${(e: Event) => this.flashOtaPassword = (e.target as HTMLInputElement).value} />
+                <button class="btn btn-outline btn-sm" @click=${() => this.flashOtaPassword = this.generateRandomHex(16)}>Generate</button>
+              </div>
+            </label>
+          </div>
+        </details>
+
         <button class="btn btn-primary" @click=${() => this.onSubmitFlashConfig()} ?disabled=${!this.flashChipName || !this.flashName.trim()}>Compile Bridge Firmware</button>
       </div>
     `;
+  }
+
+  private renderTransportChoice() {
+    return html`
+      <div class="flash-stage-indicator">
+        <span class="stage-dot active">Configure</span>
+        <span class="stage-line"></span>
+        <span class="stage-dot">Compile</span>
+        <span class="stage-line"></span>
+        <span class="stage-dot">Flash</span>
+        <span class="stage-line"></span>
+        <span class="stage-dot">Detect</span>
+      </div>
+
+      <div class="choice-cards">
+        <button class="choice-card" @click=${() => this.onChooseTransport('wifi')}>
+          <span class="choice-icon">\u{1F4F6}</span>
+          <h3>Wi-Fi Bridge</h3>
+          <p>Connects to the add-on over your Wi-Fi network. You'll need the network name and password.</p>
+        </button>
+        <button class="choice-card" @click=${() => this.onChooseTransport('serial')}>
+          <span class="choice-icon">\u{1F50C}</span>
+          <h3>Serial Bridge</h3>
+          <p>Connects over a USB-UART link to the add-on. No Wi-Fi credentials needed.</p>
+        </button>
+      </div>
+    `;
+  }
+
+  private prefillTag(field: string) {
+    return this.flashPrefilledFields[field]
+      ? html`<span class="prefill-tag">pre-filled</span>`
+      : nothing;
   }
 
   private renderFlashProgress() {
@@ -1524,23 +1606,8 @@ export class EspSetupWizard extends LitElement {
         <div class="flash-progress-area">
           ${this.flashTransport === 'serial' ? html`
             <h3>Flash over Serial</h3>
-            <p class="muted">Firmware is ready. Select the serial port the bridge is connected to and flash it from the add-on.</p>
-            <div class="manual-form">
-              <label>
-                Serial Port
-                <div class="flash-key-row">
-                  <select .value=${this.flashSerialPort} @change=${(e: Event) => this.flashSerialPort = (e.target as HTMLSelectElement).value}>
-                    <option value="">-- Select port --</option>
-                    ${this.flashSerialPorts.map(p => html`
-                      <option value=${p.port} ?selected=${this.flashSerialPort === p.port}>${p.port} — ${p.description}</option>
-                    `)}
-                  </select>
-                  <button class="btn btn-outline btn-sm" @click=${() => void this.scanFlashSerialPorts()} ?disabled=${this.flashSerialPortScanning}>
-                    ${this.flashSerialPortScanning ? 'Scanning...' : 'Rescan'}
-                  </button>
-                </div>
-              </label>
-            </div>
+            <p class="muted">Firmware is ready. Connect the bridge to the add-on host and flash it over the selected port.</p>
+            <div class="transport-badge">Port: ${this.flashSerialPort || 'not selected'}</div>
             ${this.flashSerialFlashStatus === 'flashing' ? html`
               <div class="progress-bar-container"><div class="progress-bar" style="width: 100%"></div></div>
               <p class="muted">Flashing ${this.flashName}...</p>
@@ -2378,6 +2445,72 @@ export class EspSetupWizard extends LitElement {
       border-radius: 8px;
       font-size: 13px;
       color: #92400e;
+    }
+
+    .transport-badge {
+      display: inline-block;
+      align-self: flex-start;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .prefill-tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: #dcfce7;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: none;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+    }
+
+    .advanced-section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 0 12px;
+    }
+
+    .advanced-section summary {
+      cursor: pointer;
+      padding: 10px 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      list-style: none;
+    }
+
+    .advanced-section summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced-section summary::before {
+      content: '▸';
+      display: inline-block;
+      margin-right: 6px;
+      transition: transform 0.15s;
+    }
+
+    .advanced-section[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    .advanced-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding-bottom: 12px;
     }
 
     .flash-key-row {
