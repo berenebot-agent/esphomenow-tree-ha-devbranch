@@ -247,6 +247,8 @@ export interface ConfiguredBridge {
 export interface AppConfig {
   bridge: Record<string, unknown>;
   active_bridge: Record<string, unknown> | null;
+  /** The add-on's own bridge records — the authoritative "is a bridge configured". */
+  bridges?: Record<string, unknown>[];
   firmware_retention_days: number;
   ws_client_enabled?: boolean;
   ws_status?: Record<string, unknown> | null;

@@ -68,9 +68,14 @@ export class EspnowApp extends LitElement {
       const config = await api.config();
       this.integrationLoaded = config.integration?.loaded ?? null;
       this.integrationConfigured = config.integration?.configured ?? false;
+      // The add-on's own bridge records are the only authority here. The
+      // integration's bridge_count is retained runtime state that survives
+      // clearing the add-on's data (HA keeps the config entries), so a stale
+      // snapshot reports a bridge the add-on no longer has and suppresses the
+      // first-run wizard on a genuinely fresh install.
       this.bridgeConfigured = !!(
         (config.active_bridge && !config.active_bridge.error) ||
-        ((config.integration?.bridge_count ?? 0) > 0)
+        (config.bridges?.length ?? 0) > 0
       );
       this.addonConnected = true;
     } catch {
