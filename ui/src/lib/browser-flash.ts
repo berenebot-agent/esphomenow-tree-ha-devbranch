@@ -104,6 +104,19 @@ export async function grantedPorts(): Promise<SerialPort[]> {
  */
 export async function acquirePort(): Promise<SerialPort | 'cancelled'> {
   const granted = await grantedPorts();
+  // Prefer a port that still reports a USB identity. Chrome keeps previously-granted
+  // ports in `getPorts()` long after the device is gone: those entries return an empty
+  // `getInfo()` and fail every `open()` with "Failed to open serial port". Taking the
+  // last entry blindly lands on one of those dead handles and the whole flash flow
+  // stalls before it starts, so keep the dead ones as a fallback only.
+  const live = granted.filter((port) => {
+    try {
+      return Boolean(port.getInfo().usbVendorId);
+    } catch {
+      return false;
+    }
+  });
+  if (live.length > 0) return live[live.length - 1];
   if (granted.length > 0) return granted[granted.length - 1];
 
   if (!navigator.serial) throw new Error('Web Serial is not available in this browser.');
