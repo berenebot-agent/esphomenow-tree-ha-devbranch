@@ -565,6 +565,26 @@ That needs esptool on a USB connection, and the caveat is deliberately left in t
 source (`bridge_api_serial.cpp:138-141`,
 `test/tests/test_serial_ota_support.py:37-44`).
 
+### The serial port picker is empty, or only shows `/dev/ttyS*`
+
+**Symptoms.** The wizard's serial port list is empty, or offers only `ttyS0..3`;
+the connected adapter never appears even though it is plugged into the HA host.
+
+**Cause.** Two different things:
+
+- `ttyS*` are the host's virtual/legacy UARTs, not an ESP adapter. They are no
+  longer listed (`app/serial_ports.py`), so an empty picker now means what it says.
+- The adapter is not visible to the add-on because it is not attached to the HA
+  host, or was plugged in *after* the add-on started. `uart: true` maps serial
+  devices at container start; `usb: true` adds plug-and-play.
+
+**Fix.** Confirm the adapter shows in **Settings → System → Hardware** on the HA
+host (look for a `ttyUSB*`/`ttyACM*` device). If the bridge lives on another
+machine, run `tools/serial-bridge/run.sh` there and enter a
+`socket://<dev-host>:7000` URL in the wizard's serial field instead of picking a
+local device. The picker prefers `/dev/serial/by-id/*` names because they survive
+the `ttyUSB0` renumbering that happens on replug.
+
 ### `serial port ... not found`, or a `socket://` URL is rejected
 
 **Cause.** `serial.Serial()` only accepts a device path; pyserial's URL schemes

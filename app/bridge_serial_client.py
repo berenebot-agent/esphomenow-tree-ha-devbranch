@@ -8,6 +8,7 @@ import secrets
 import threading
 import time
 import uuid
+from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -154,13 +155,24 @@ class SerialBridgeClient:
 
         available = list(serial.tools.list_ports.comports())
 
+        # Resolve by stable by-id path first: /dev/ttyUSB0 renumbers between replug
+        # and reboot, so a saved path can silently point at a different adapter (or
+        # a phantom virtual UART). The by-id symlink carries the adapter's serial
+        # number and survives the renumber.
+        configured_lower = configured.lower()
+        if configured_lower.startswith("/dev/serial/by-id/") and Path(configured).exists():
+            return configured
+
         for port in available:
             if port.device == configured:
                 return configured
 
+        # Match a saved /dev/ttyUSBn or /dev/ttyACMn against the adapter that now
+        # answers for it, by USB identity, so a renumber is recovered rather than
+        # reported as "not found".
         for port in available:
-            if configured and (configured.lower() in (port.description or "").lower()
-                                or configured.lower() in (port.hwid or "").lower()):
+            if configured and (configured_lower in (port.description or "").lower()
+                                or configured_lower in (port.hwid or "").lower()):
                 self.target.serial_port = port.device
                 logger.info("serial bridge: hotplug resolved %s → %s", configured, port.device)
                 return port.device

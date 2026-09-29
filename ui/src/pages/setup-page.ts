@@ -1,7 +1,7 @@
 import { LitElement, PropertyValues, css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { load as loadYaml } from 'js-yaml';
-import { DiscoveredBridge, SerialPort, api } from '../api/client';
+import { DiscoveredBridge, SerialPortInfo, api } from '../api/client';
 import {
   acquirePort,
   chipFamilyFromName,
@@ -79,7 +79,7 @@ export class EspSetupWizard extends LitElement {
   @state() private flashTransportChosen = false;
   @state() private flashPrefilledFields: Record<string, boolean> = {};
   @state() private flashSerialPort = '';
-  @state() private flashSerialPorts: SerialPort[] = [];
+  @state() private flashSerialPorts: SerialPortInfo[] = [];
   @state() private flashSerialPortScanning = false;
   @state() private flashSerialFlashStatus = '';
   @state() private flashSerialFlashError = '';
@@ -111,7 +111,7 @@ export class EspSetupWizard extends LitElement {
   private flashCompileLogEs: EventSource | null = null;
   private flashBrowserFirmwareBlobUrl = '';
 
-  @state() private serialPorts: SerialPort[] = [];
+  @state() private serialPorts: SerialPortInfo[] = [];
   @state() private serialScanning = false;
   @state() private serialSelectedPort = '';
   @state() private serialBaud = 460800;
@@ -1363,13 +1363,19 @@ export class EspSetupWizard extends LitElement {
             <select .value=${this.serialSelectedPort} @change=${(e: Event) => this.serialSelectedPort = (e.target as HTMLSelectElement).value}>
               <option value="">-- Select port --</option>
               ${this.serialPorts.map(p => html`
-                <option value=${p.port} ?selected=${this.serialSelectedPort === p.port}>${p.port} — ${p.description}</option>
+                <option value=${p.port} ?selected=${this.serialSelectedPort === p.port}>${p.label || p.port}${p.available ? "" : " (unavailable)"}</option>
               `)}
             </select>
             <button class="btn btn-outline btn-sm" @click=${() => void this.scanSerialPorts()} ?disabled=${this.serialScanning}>
               ${this.serialScanning ? 'Scanning...' : 'Scan Ports'}
             </button>
           </div>
+        </label>
+        <label>
+          Or enter a port / network serial URL
+          <input type="text" placeholder="socket://192.168.1.50:7000 or /dev/ttyUSB0"
+            .value=${this.serialSelectedPort}
+            @input=${(e: Event) => this.serialSelectedPort = (e.target as HTMLInputElement).value} />
         </label>
         <label>
           Baud Rate
@@ -1459,7 +1465,7 @@ export class EspSetupWizard extends LitElement {
               <select .value=${this.flashSerialPort} @change=${(e: Event) => this.flashSerialPort = (e.target as HTMLSelectElement).value}>
                 <option value="">-- Select port --</option>
                 ${this.flashSerialPorts.map(p => html`
-                  <option value=${p.port} ?selected=${this.flashSerialPort === p.port}>${p.port} — ${p.description}</option>
+                  <option value=${p.port} ?selected=${this.flashSerialPort === p.port}>${p.label || p.port}${p.available ? "" : " (unavailable)"}</option>
                 `)}
               </select>
               <button class="btn btn-outline btn-sm" @click=${() => void this.scanFlashSerialPorts()} ?disabled=${this.flashSerialPortScanning}>
@@ -1467,13 +1473,20 @@ export class EspSetupWizard extends LitElement {
               </button>
             </div>
           </label>
+          <label>
+            Or enter a port / network serial URL
+            <input type="text" placeholder="socket://192.168.1.50:7000 or /dev/ttyUSB0"
+              .value=${this.flashSerialPort}
+              @input=${(e: Event) => this.flashSerialPort = (e.target as HTMLInputElement).value} />
+          </label>
           ${this.flashSerialFlashError ? html`
             <div class="flash-warning">${this.flashSerialFlashError}</div>
           ` : nothing}
           <div class="flash-warning">
             Serial transport: no WiFi credentials are needed. The bridge talks to the add-on over its
             UART0 pins (wired to a USB-UART adapter), and the console is pinned to the same UART so
-            boot logs and panic backtraces stay readable.
+            boot logs and panic backtraces stay readable. If the adapter is on another host, point the
+            add-on at it with a <code>socket://host:port</code> URL served by a TCP serial bridge.
           </div>
         `}
 

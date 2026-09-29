@@ -397,7 +397,7 @@ def create_app() -> FastAPI:
         bridge_manager=bridge_manager,
     )
 
-    app = FastAPI(title="ESP Tree Add-on", version="0.1.328")
+    app = FastAPI(title="ESP Tree Add-on", version="0.1.329")
     app.state._activity_positions = {}
     app.state.settings = settings
     app.state.db = db
@@ -586,36 +586,9 @@ def create_app() -> FastAPI:
         compile_worker.bridge_manager = bridge_manager
 
     def list_serial_ports() -> list[dict[str, Any]]:
-        candidates: list[Path] = []
-        for pattern in ("ttyUSB*", "ttyACM*", "ttyS*"):
-            candidates.extend(Path("/dev").glob(pattern))
-        by_id_dir = Path("/dev/serial/by-id")
-        if by_id_dir.exists():
-            candidates.extend(by_id_dir.glob("*"))
+        from .serial_ports import list_serial_ports as _list_serial_ports
 
-        seen: set[str] = set()
-        ports: list[dict[str, Any]] = []
-        for path in sorted(candidates, key=lambda p: str(p)):
-            try:
-                resolved = str(path.resolve())
-            except OSError:
-                resolved = str(path)
-            key = resolved
-            if key in seen:
-                continue
-            seen.add(key)
-            port = str(path)
-            ports.append(
-                {
-                    "port": port,
-                    "label": path.name,
-                    "path": port,
-                    "resolved": resolved,
-                    "available": os.access(resolved, os.R_OK | os.W_OK) if Path(resolved).exists() else os.access(port, os.R_OK | os.W_OK),
-                    "by_id": str(path).startswith("/dev/serial/by-id/"),
-                }
-            )
-        return ports
+        return _list_serial_ports()
 
     def control_manager() -> Any | None:
         return bridge_manager

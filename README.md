@@ -68,16 +68,22 @@ See `CONTRIBUTING.md` for the per-domain entry points.
 2. Install **ESP Tree**, start it, then open its panel from the sidebar
    (ingress) or **OPEN WEB UI** on the add-on page.
 
-The add-on runs on the host network with the `uart` and `udev` privileges so it
-can see serial adapters. `startup: services` starts it before Home Assistant
-Core; `init: false` is set because the container uses the s6-overlay init from
-the HA base image.
+The add-on runs on the host network with the `uart`, `usb` and `udev` privileges
+so it can see serial adapters (including plug-and-play). `startup: services`
+starts it before Home Assistant Core; `init: false` is set because the container
+uses the s6-overlay init from the HA base image.
+
+Serial targets can be a local device (`/dev/serial/by-id/...`, preferred because
+it survives renumbering, or `/dev/ttyUSB0`) or a network serial URL such as
+`socket://<host>:7000` served by a TCP serial bridge — use the latter when the
+adapter is plugged into a different machine from HAOS.
 
 ### First run — the add-on's own wizard
 
 1. **Connect or provision a bridge.** *I Already Have a Bridge* offers
    **Discover** (scan the network), **Manual** (host, port, API key) and
-   **Serial** (a locally discovered serial device). *Set Up a New Bridge* asks
+   **Serial** (a locally discovered serial device, or a typed `/dev/...` path or
+   `socket://host:port` URL). *Set Up a New Bridge* asks
    you to choose WiFi or serial transport, compiles the firmware, then offers
    browser USB flashing or add-on-side serial flashing as appropriate.
 2. **Activate the integration.** The wizard can request a Home Assistant restart
